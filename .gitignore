@@ -10,3 +10,5 @@ wheels/
 .venv
 
 ai-news-aggregator.code-workspace
+
+.env
