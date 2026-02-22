@@ -50,11 +50,11 @@ class DigestAgent:
 
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=user_prompt,  # ✅ contents (not content)
+                contents=user_prompt,  
                 config={
                     "system_instruction": self.system_prompt,
-                    "temperature": 0.3,  # ✅ safer for factual summaries
-                    "response_mime_type": "application/json",  # ✅ important
+                    "temperature": 0.3,
+                    "response_mime_type": "application/json", 
                     "response_schema": {
                         "type": "object",
                         "properties": {
@@ -75,15 +75,3 @@ class DigestAgent:
         except Exception as e:
             print(f"Error generating digest: {e}")
             return None
-
-
-if __name__ == "__main__":
-    client = genai.Client(api_key=os.getenv("DIGEST_GEMINI_API_KEY"))
-    model = "gemini-3-flash-preview"
-
-    response = client.models.generate_content(
-        model = model,
-        contents = "What's your name? This is my first time meeting you",
-    )
-
-    print(response.text)
