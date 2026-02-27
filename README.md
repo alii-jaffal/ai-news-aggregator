@@ -168,4 +168,4 @@ The pipeline runs: scrape → enrich → digest → rank → email.
 
 ## License
 
-MIT License. See `LICENSE` for details.
+All rights reserved.
