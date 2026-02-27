@@ -168,4 +168,4 @@ The pipeline runs: scrape → enrich → digest → rank → email.
 
 ## License
 
-Add a license if you plan to make the project reusable (MIT is a common choice). If omitted, default GitHub rules apply.
+MIT License. See `LICENSE` for details.
