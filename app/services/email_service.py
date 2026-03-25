@@ -8,7 +8,7 @@ import markdown
 
 load_dotenv()
 
-MY_EMAIL = os.getenv("EMAIL")
+EMAIL = os.getenv("EMAIL")
 APP_PASSWORD = os.getenv("APP_PASSWORD")
 
 
@@ -119,22 +119,22 @@ def send_email(
     - Attaches an HTML part if provided.
     """
     if recipients is None:
-        if not MY_EMAIL:
-            raise ValueError("MY_EMAIL environment variable is not set")
-        recipients = [MY_EMAIL]
+        if not EMAIL:
+            raise ValueError("EMAIL environment variable is not set")
+        recipients = [EMAIL]
 
     recipients = [r.strip() for r in recipients if r and r.strip()]
     if not recipients:
         raise ValueError("No valid recipients provided")
 
-    if not MY_EMAIL:
-        raise ValueError("MY_EMAIL environment variable is not set")
+    if not EMAIL:
+        raise ValueError("EMAIL environment variable is not set")
     if not APP_PASSWORD:
         raise ValueError("APP_PASSWORD environment variable is not set")
 
     msg = MIMEMultipart("alternative")
     msg["Subject"] = subject
-    msg["From"] = MY_EMAIL
+    msg["From"] = EMAIL
     msg["To"] = ", ".join(recipients)
 
     msg.attach(MIMEText(body_text, "plain", "utf-8"))
@@ -143,8 +143,8 @@ def send_email(
         msg.attach(MIMEText(body_html, "html", "utf-8"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
-        smtp.login(MY_EMAIL, APP_PASSWORD)
-        smtp.sendmail(MY_EMAIL, recipients, msg.as_string())
+        smtp.login(EMAIL, APP_PASSWORD)
+        smtp.sendmail(EMAIL, recipients, msg.as_string())
 
 
 def markdown_to_html(markdown_text: str) -> str:
@@ -195,12 +195,12 @@ def digest_to_html(digest_response) -> str:
 
 def send_email_to_self(subject: str, body_markdown_or_text: str) -> None:
     """
-    Sends to MY_EMAIL.
+    Sends to EMAIL.
     - Uses the given text as the plain body
     - Also sends an HTML version by converting from markdown
     """
-    if not MY_EMAIL:
-        raise ValueError("MY_EMAIL environment variable is not set. Please set it in your .env file.")
+    if not EMAIL:
+        raise ValueError("EMAIL environment variable is not set. Please set it in your .env file.")
 
     body_html = markdown_to_html(body_markdown_or_text)
-    send_email(subject=subject, body_text=body_markdown_or_text, body_html=body_html, recipients=[MY_EMAIL])
+    send_email(subject=subject, body_text=body_markdown_or_text, body_html=body_html, recipients=[EMAIL])
