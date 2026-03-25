@@ -1,10 +1,5 @@
-import sys
 import logging
 from typing import Optional
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 from app.agent.digest_agent import DigestAgent
 from app.database.repository import Repository
 

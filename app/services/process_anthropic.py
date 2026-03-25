@@ -1,9 +1,4 @@
-import sys
 from typing import Optional
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent.parent.parent))
-
 from app.scrapers.anthropic import AnthropicScraper
 from app.database.repository import Repository
 
