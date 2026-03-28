@@ -1,61 +1,73 @@
 # AI News Aggregator
 
-AI News Aggregator is an end-to-end Python pipeline that collects AI-related updates from multiple sources, stores them in PostgreSQL, enriches content when possible, generates structured digests with Gemini, ranks them for a user profile, and sends a daily email newsletter.
+AI News Aggregator is a Python project that collects recent AI updates from multiple sources, stores them in PostgreSQL, enriches the content when possible, generates short digests with Gemini, ranks those digests for a user profile, and sends a daily email newsletter in both plain text and HTML.
 
-This project is built as a modular pipeline with separate layers for scraping, persistence, enrichment, digest generation, ranking, and email delivery.
-
----
+The project is built as a pipeline, not a single script. It has separate layers for scraping, persistence, enrichment, digest generation, ranking, and email delivery.
 
 ## What the project does
 
 High-level flow:
 
-1. Scrape recent items from multiple sources
-2. Store raw records in PostgreSQL
-3. Enrich source content when possible
-   - Anthropic articles → markdown
-   - YouTube videos → transcripts
-   - OpenAI news → RSS description
-4. Generate digests for items that do not yet have one
-5. Rank recent digests for a user profile
-6. Generate and send a daily email digest
+1. Scrape recent items from configured sources.
+2. Store raw source records in PostgreSQL.
+3. Enrich source content where possible.
+   - YouTube videos -> transcript text when available
+   - Anthropic articles -> markdown extracted from the page
+   - OpenAI articles -> RSS title/description metadata
+4. Generate digest records for items that do not already have one.
+5. Rank recent digests against the project’s user profile.
+6. Generate and send a daily email digest.
 
----
-
-## Features
-
-- Multi-source ingestion
-  - YouTube uploads via RSS
-  - OpenAI news via RSS
-  - Anthropic articles via RSS + webpage-to-markdown extraction
-- PostgreSQL persistence
-- Content enrichment
-  - YouTube transcripts via `youtube-transcript-api`
-  - Anthropic article markdown via `docling`
-- Digest generation with Gemini
-- Personalized ranking for a user profile
-- HTML + plain text email delivery through Gmail SMTP
-- One-command pipeline execution through `main.py`
-
----
-
-## Current source behavior
+## Current sources
 
 ### YouTube
-- Scrapes recent uploads from configured channels
-- Attempts to fetch transcripts
-- Falls back when transcripts are unavailable
+- Source type: RSS channel feeds
+- Stored data: video id, title, url, channel id, publish time, description
+- Enrichment: transcript retrieval with `youtube-transcript-api`
+- Limitation: some videos do not expose transcripts
 
 ### OpenAI
-- Uses the RSS feed as the source of truth
-- Stores title, description, URL, category, and publish date
-- Does **not** depend on full-page scraping
+- Source type: RSS feed
+- Stored data: guid, title, url, publish time, description, category
+- Enrichment: none beyond feed metadata
+- Limitation: this source currently relies on RSS title/description rather than full article scraping
 
 ### Anthropic
-- Scrapes feed entries
-- Attempts webpage-to-markdown extraction for richer content
+- Source type: RSS feed entries
+- Stored data: guid, title, url, publish time, description, category
+- Enrichment: webpage -> markdown extraction using Docling
+- Limitation: extraction quality depends on the source page structure
 
----
+## Architecture
+
+```text
+Sources
+  ├─ YouTube RSS
+  ├─ OpenAI RSS
+  └─ Anthropic RSS
+        |
+        v
+Scrapers
+        |
+        v
+PostgreSQL raw tables
+        |
+        +--> Anthropic markdown enrichment
+        |
+        +--> YouTube transcript enrichment
+        |
+        v
+Digest generation with Gemini
+        |
+        v
+Digest table
+        |
+        v
+Ranking with Gemini curator
+        |
+        v
+Email introduction + HTML rendering + SMTP delivery
+```
 
 ## Project structure
 
@@ -86,16 +98,15 @@ High-level flow:
 │   │   └── process_youtube.py
 │   ├── config.py
 │   ├── daily_runner.py
-│   └── runner.py
+│   ├── runner.py
+│   └── settings.py
 ├── docker/
-│   ├── .env
 │   └── docker-compose.yaml
+│   
 ├── main.py
 ├── pyproject.toml
 └── README.md
 ```
-
----
 
 ## Tech stack
 
@@ -103,183 +114,146 @@ High-level flow:
 - PostgreSQL
 - SQLAlchemy
 - Pydantic
+- pydantic-settings
 - Google Gemini
 - feedparser
-- Docling
 - youtube-transcript-api
+- Docling
 - markdown
 - Gmail SMTP
+- Docker / Docker Compose
 
----
+## Quick start
 
-## Setup
-
-### 1. Start PostgreSQL
-
-From the `docker/` directory:
-
-```bash
-docker compose up -d
-```
-
-Check that the container is running:
-
-```bash
-docker ps
-```
-
----
-
-### 2. Install dependencies
-
-Using `uv`:
+### 1. Install dependencies
 
 ```bash
 uv sync
 ```
 
----
+### 2. Create a single root `.env`
 
-### 3. Configure environment variables
-
-The project currently uses:
-
-- `docker/.env` for Docker Compose database values
-- `app/.env` for application values
-
-This works, but for a cleaner setup you can eventually move to a single root `.env` plus a `.env.example` template.
-
-Example application environment variables:
+Create `.env` in the project root.
 
 ```env
-CURATOR_GEMINI_API_KEY=your_curator_key
+# Database
+POSTGRES_USER=postgres
+POSTGRES_PASSWORD=postgres
+POSTGRES_HOST=localhost
+POSTGRES_PORT=5432
+POSTGRES_DB=ai_news_aggregator
+
+# Gemini API keys
 DIGEST_GEMINI_API_KEY=your_digest_key
+CURATOR_GEMINI_API_KEY=your_curator_key
 EMAIL_GEMINI_API_KEY=your_email_key
 
+# Email
 EMAIL=your_email@gmail.com
 APP_PASSWORD=your_gmail_app_password
 
-POSTGRES_USER=postgres
-POSTGRES_PASSWORD=postgres
-POSTGRES_DB=ai_news_aggregator
-POSTGRES_HOST=localhost
-POSTGRES_PORT=5432
-
+# Optional proxy for transcript retrieval
 PROXY_USERNAME=
 PROXY_PASSWORD=
 ```
 
-### Notes
-- `EMAIL` is currently used as both sender and default recipient.
-- Do not commit real `.env` files.
-- For Gmail, use an App Password, not your normal password.
+### 3. Start PostgreSQL
 
----
+Use whichever workflow you prefer:
 
-### 4. Create database tables
-
-Run:
+#### Option A: Docker Compose
 
 ```bash
-python -m app.database.create_tables
+docker compose -f docker/docker-compose.yaml up -d
 ```
 
-If you prefer `uv`:
+#### Option B: Docker Desktop
+Start the existing Postgres container from Docker Desktop after it has been created from the compose file.
+
+### 4. Create tables
 
 ```bash
 uv run -m app.database.create_tables
 ```
 
----
-
-## Usage
-
-### Run the full pipeline
+### 5. Run the full pipeline
 
 ```bash
-python main.py
+uv run .\main.py
 ```
 
-You can also pass custom values:
+Optional arguments:
 
 ```bash
-python main.py 24 10
+uv run .\main.py 24 10
 ```
 
 Where:
-- `24` = number of hours to look back
+- `24` = hours to look back
 - `10` = number of top ranked articles to include in the email
 
----
+## Official commands
 
-## Pipeline stages
-
-The full pipeline performs:
-
-1. Source scraping
-2. Anthropic markdown enrichment
-3. YouTube transcript enrichment
-4. Digest generation
-5. Ranking + email generation
-6. Email sending
-
----
-
-## Development notes
-
-### Running style
-
-Right now, the project is designed so that running `main.py` from the repository root is enough to execute the full pipeline.
-
-If you want cleaner imports long-term, prefer module execution for standalone scripts:
+### Full pipeline
 
 ```bash
-python -m app.services.process_anthropic
-python -m app.services.process_youtube
-python -m app.services.process_digest
-python -m app.services.process_email
+uv run .\main.py
 ```
 
+### Scraping only
 
-### Current limitations
+```bash
+uv run -m app.runner
+```
 
-- OpenAI articles currently use RSS descriptions rather than full extracted article text
-- Some YouTube videos do not expose transcripts
-- Source richness is not uniform across providers
+### Re-run individual stages
 
----
+```bash
+uv run -m app.services.process_anthropic
+uv run -m app.services.process_youtube
+uv run -m app.services.process_digest
+uv run -m app.services.process_email
+```
+
+## Known limitations
+
+- OpenAI entries currently use RSS metadata rather than full article extraction.
+- Some YouTube videos have no transcript available.
+- Gemini calls can occasionally fail with temporary `503 UNAVAILABLE` responses during high demand.
+- Ranking and email generation currently depend on successful LLM calls.
 
 ## Troubleshooting
 
-### PostgreSQL connection issues
-- Make sure Docker is running
-- Make sure the container is healthy
-- Verify the database values in your environment files
+### Database connection fails
+Check:
+- PostgreSQL container is running
+- root `.env` values are correct
+- `POSTGRES_HOST` is correct for your setup
+- tables were created successfully
 
-### Gmail authentication errors
-- Enable 2FA on the Gmail account
-- Use a valid Gmail App Password
+### No transcripts were processed
+Possible reasons:
+- the newly scraped videos already had transcripts stored
+- the videos do not expose transcripts
+- transcript retrieval is rate-limited or blocked
 
-### Missing YouTube transcripts
-- Some videos disable transcripts
-- Those videos may be skipped or marked unavailable
+### Digest generation or ranking fails with 503
+This is usually a temporary Gemini availability issue, not a project import/config problem. Re-run the stage later.
 
----
+### Email fails
+Check:
+- `EMAIL` and `APP_PASSWORD` are set correctly
+- Gmail app password is valid
+- the ranking step succeeded
 
-## Future improvements
+## Why the `docs/` folder exists
 
-Ideas for version 2:
+`docs/` stores project notes that are useful for maintenance but do not belong in the main README. In this project, `docs/runbook.md` is the operational guide for setup, reruns, and debugging.
 
+## Future improvement areas
+
+- retry and fallback handling for Gemini failures
 - story deduplication across sources
-- clustering related updates into a single story
-- persistent user profiles
-- dashboard / UI
-- ingestion analytics
-- source quality tracking
-- better retry and failure-state handling
-
----
-
-## License
-
-All rights reserved.
+- richer source analytics and failure tracking
+- persistent user preferences
+- web dashboard for browsing archived digests
