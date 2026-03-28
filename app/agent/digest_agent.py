@@ -1,11 +1,9 @@
-import os
+from app.settings import settings
 import json
 from typing import Optional
 from pydantic import BaseModel, ValidationError
-from dotenv import load_dotenv
 from google import genai
 
-load_dotenv()
 
 
 
@@ -32,9 +30,9 @@ class DigestOutput(BaseModel):
 
 class DigestAgent:
     def __init__(self):
-        api_key = os.getenv("DIGEST_GEMINI_API_KEY")
+        api_key = settings.DIGEST_GEMINI_API_KEY
         if not api_key:
-            raise ValueError("DIGEST_GEMINI_API_KEY is not set in environment/.env")
+            raise ValueError("DIGEST_GEMINI_API_KEY is not set in environment /.env")
 
         self.client = genai.Client(api_key=api_key)
         self.model = "gemini-3-flash-preview"

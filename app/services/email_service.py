@@ -1,15 +1,13 @@
-import os
+from app.settings import settings
 import smtplib
 import html as html_lib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-from dotenv import load_dotenv
 import markdown
 
-load_dotenv()
 
-EMAIL = os.getenv("EMAIL")
-APP_PASSWORD = os.getenv("APP_PASSWORD")
+EMAIL = settings.EMAIL
+APP_PASSWORD = settings.APP_PASSWORD
 
 
 

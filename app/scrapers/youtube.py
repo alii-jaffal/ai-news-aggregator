@@ -1,4 +1,4 @@
-import os
+from app.settings import settings
 from datetime import datetime, timedelta, timezone
 from pydantic import BaseModel
 from typing import List, Optional
@@ -24,8 +24,8 @@ class ChannelVideo(BaseModel):
 class YouTubeScraper:
     def __init__(self):
         proxy_config = None
-        proxy_username = os.getenv("PROXY_USERNAME")
-        proxy_password = os.getenv("PROXY_PASSWORD")
+        proxy_username = settings.PROXY_USERNAME
+        proxy_password = settings.PROXY_PASSWORD
         
         if proxy_username and proxy_password:
             proxy_config = WebshareProxyConfig(

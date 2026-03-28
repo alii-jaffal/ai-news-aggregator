@@ -1,9 +1,4 @@
 import logging
-from dotenv import load_dotenv
-
-load_dotenv()
-
-
 from app.agent.curator_agent import CuratorAgent
 from app.profiles.user_profile import USER_PROFILE
 from app.database.repository import Repository

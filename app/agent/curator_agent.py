@@ -1,11 +1,9 @@
-import os
+from app.settings import settings
 from typing import List
 import json
 from google import genai
 from pydantic import BaseModel, Field
-from dotenv import load_dotenv
 
-load_dotenv()
 
 
 class RankedArticle(BaseModel):
@@ -44,7 +42,7 @@ CURATOR_PROMPT = """
 
 class CuratorAgent:
     def __init__(self, user_profile: dict):
-        self.client = genai.Client(api_key=os.getenv("CURATOR_GEMINI_API_KEY"))
+        self.client = genai.Client(api_key=settings.CURATOR_GEMINI_API_KEY)
         self.model = "gemini-3-flash-preview"
         self.user_profile = user_profile
         self.system_prompt = self._build_system_prompt()

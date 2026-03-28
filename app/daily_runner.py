@@ -1,9 +1,5 @@
 import logging
 from datetime import datetime
-from dotenv import load_dotenv
-
-load_dotenv()
-
 from app.runner import run_scrapers
 from app.services.process_anthropic import process_anthropic_markdown
 from app.services.process_youtube import process_youtube_transcripts
