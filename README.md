@@ -246,10 +246,6 @@ Check:
 - Gmail app password is valid
 - the ranking step succeeded
 
-## Why the `docs/` folder exists
-
-`docs/` stores project notes that are useful for maintenance but do not belong in the main README. In this project, `docs/runbook.md` is the operational guide for setup, reruns, and debugging.
-
 ## Future improvement areas
 
 - retry and fallback handling for Gemini failures
