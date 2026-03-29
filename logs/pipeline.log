@@ -1,164 +1,45 @@
-2026-03-29 16:25:05,981 | INFO | run-20260329-162505 | __main__ | Initialized pipeline run with hours=24 top_n=10
-2026-03-29 16:25:05,981 | INFO | run-20260329-162505 | app.daily_runner | ============================================================
-2026-03-29 16:25:05,981 | INFO | run-20260329-162505 | app.daily_runner | Starting Daily AI News Aggregator Pipeline
-2026-03-29 16:25:05,981 | INFO | run-20260329-162505 | app.daily_runner | ============================================================
-2026-03-29 16:25:05,981 | INFO | run-20260329-162505 | app.daily_runner | [1/5] Scraping articles from sources...
-2026-03-29 16:25:06,022 | INFO | run-20260329-162505 | app.runner | Starting scraper run for the last 24 hours
-2026-03-29 16:25:07,088 | INFO | run-20260329-162505 | app.runner | Scraped 0 YouTube videos from channel UCn8ujwUInbJkBhffxqAPBVQ
-2026-03-29 16:25:08,661 | INFO | run-20260329-162505 | app.runner | Scraped 0 YouTube videos from channel UCawZsQWqfGSbCI5yjkdVkTA
-2026-03-29 16:25:10,845 | INFO | run-20260329-162505 | app.runner | Scraped 0 OpenAI articles
-2026-03-29 16:25:13,484 | INFO | run-20260329-162505 | app.runner | Scraped 0 Anthropic articles
-2026-03-29 16:25:13,484 | INFO | run-20260329-162505 | app.runner | Scraper run complete: youtube=0 openai=0 anthropic=0
-2026-03-29 16:25:13,488 | INFO | run-20260329-162505 | app.daily_runner | ✓ Scraped 0 YouTube videos, 0 OpenAI articles, 0 Anthropic articles
-2026-03-29 16:25:13,488 | INFO | run-20260329-162505 | app.daily_runner | [2/5] Processing Anthropic markdown...
-2026-03-29 16:25:13,532 | INFO | run-20260329-162505 | app.services.process_anthropic | Starting Anthropic markdown processing
-2026-03-29 16:25:17,603 | ERROR | run-20260329-162505 | app.daily_runner | Pipeline failed
-Traceback (most recent call last):
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
-    self._dbapi_connection = engine.raw_connection()
-                             ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3309, in raw_connection
-    return self.pool.connect()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 447, in connect
-    return _ConnectionFairy._checkout(self)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
-    fairy = _ConnectionRecord.checkout(pool)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 711, in checkout
-    rec = pool._do_get()
-          ^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
-    with util.safe_reraise():
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
-    return self._create_connection()
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 388, in _create_connection
-    return _ConnectionRecord(self)
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 673, in __init__
-    self.__connect()
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 899, in __connect
-    with util.safe_reraise():
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 895, in __connect
-    self.dbapi_connection = connection = pool._invoke_creator(self)
-                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\create.py", line 661, in connect
-    return dialect.connect(*cargs, **cparams)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
-    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
-    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-psycopg2.OperationalError: connection to server at "localhost" (::1), port 5432 failed: Connection refused (0x0000274D/10061)
-	Is the server running on that host and accepting TCP/IP connections?
-connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused (0x0000274D/10061)
-	Is the server running on that host and accepting TCP/IP connections?
-
-
-The above exception was the direct cause of the following exception:
-
-Traceback (most recent call last):
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\app\daily_runner.py", line 41, in run_daily_pipeline
-    anthropic_result = process_anthropic_markdown()
-                       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\app\services\process_anthropic.py", line 14, in process_anthropic_markdown
-    articles = repo.get_anthropic_articles_without_markdown(limit=limit)
-               ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\app\database\repository.py", line 123, in get_anthropic_articles_without_markdown
-    return query.all()
-           ^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2704, in all
-    return self._iter().all()  # type: ignore
-           ^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\query.py", line 2857, in _iter
-    result: Union[ScalarResult[_T], Result[_T]] = self.session.execute(
-                                                  ^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2351, in execute
-    return self._execute_internal(
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2239, in _execute_internal
-    conn = self._connection_for_bind(bind)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 2108, in _connection_for_bind
-    return trans._connection_for_bind(engine, execution_options)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "<string>", line 2, in _connection_for_bind
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\state_changes.py", line 137, in _go
-    ret_value = fn(self, *arg, **kw)
-                ^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\orm\session.py", line 1187, in _connection_for_bind
-    conn = bind.connect()
-           ^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3285, in connect
-    return self._connection_cls(self)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 145, in __init__
-    Connection._handle_dbapi_exception_noconnection(
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 2448, in _handle_dbapi_exception_noconnection
-    raise sqlalchemy_exception.with_traceback(exc_info[2]) from e
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 143, in __init__
-    self._dbapi_connection = engine.raw_connection()
-                             ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\base.py", line 3309, in raw_connection
-    return self.pool.connect()
-           ^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 447, in connect
-    return _ConnectionFairy._checkout(self)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 1264, in _checkout
-    fairy = _ConnectionRecord.checkout(pool)
-            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 711, in checkout
-    rec = pool._do_get()
-          ^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 177, in _do_get
-    with util.safe_reraise():
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\impl.py", line 175, in _do_get
-    return self._create_connection()
-           ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 388, in _create_connection
-    return _ConnectionRecord(self)
-           ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 673, in __init__
-    self.__connect()
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 899, in __connect
-    with util.safe_reraise():
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\util\langhelpers.py", line 224, in __exit__
-    raise exc_value.with_traceback(exc_tb)
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\pool\base.py", line 895, in __connect
-    self.dbapi_connection = connection = pool._invoke_creator(self)
-                                         ^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\create.py", line 661, in connect
-    return dialect.connect(*cargs, **cparams)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\sqlalchemy\engine\default.py", line 630, in connect
-    return self.loaded_dbapi.connect(*cargs, **cparams)  # type: ignore[no-any-return]  # NOQA: E501
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\alija\Documents\AI-News-Aggregator\ai-news-aggregator\.venv\Lib\site-packages\psycopg2\__init__.py", line 135, in connect
-    conn = _connect(dsn, connection_factory=connection_factory, **kwasync)
-           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
-sqlalchemy.exc.OperationalError: (psycopg2.OperationalError) connection to server at "localhost" (::1), port 5432 failed: Connection refused (0x0000274D/10061)
-	Is the server running on that host and accepting TCP/IP connections?
-connection to server at "localhost" (127.0.0.1), port 5432 failed: Connection refused (0x0000274D/10061)
-	Is the server running on that host and accepting TCP/IP connections?
-
-(Background on this error at: https://sqlalche.me/e/20/e3q8)
-2026-03-29 16:25:17,862 | INFO | run-20260329-162505 | app.daily_runner | ============================================================
-2026-03-29 16:25:17,862 | INFO | run-20260329-162505 | app.daily_runner | Pipeline Summary
-2026-03-29 16:25:17,864 | INFO | run-20260329-162505 | app.daily_runner | ============================================================
-2026-03-29 16:25:17,864 | INFO | run-20260329-162505 | app.daily_runner | Duration: 11.9 seconds
-2026-03-29 16:25:17,865 | INFO | run-20260329-162505 | app.daily_runner | Scraped: {'youtube': 0, 'openai': 0, 'anthropic': 0}
-2026-03-29 16:25:17,865 | INFO | run-20260329-162505 | app.daily_runner | Processed: {}
-2026-03-29 16:25:17,866 | INFO | run-20260329-162505 | app.daily_runner | Digests: {}
-2026-03-29 16:25:17,866 | INFO | run-20260329-162505 | app.daily_runner | Email: Failed
-2026-03-29 16:25:17,866 | INFO | run-20260329-162505 | app.daily_runner | ============================================================
+2026-03-29 16:54:42,533 | INFO | run-20260329-165442 | __main__ | Initialized pipeline run with hours=24 top_n=10
+2026-03-29 16:54:42,533 | INFO | run-20260329-165442 | app.daily_runner | ============================================================
+2026-03-29 16:54:42,533 | INFO | run-20260329-165442 | app.daily_runner | Starting Daily AI News Aggregator Pipeline
+2026-03-29 16:54:42,533 | INFO | run-20260329-165442 | app.daily_runner | ============================================================
+2026-03-29 16:54:42,533 | INFO | run-20260329-165442 | app.daily_runner | [1/5] Scraping articles from sources...
+2026-03-29 16:54:42,584 | INFO | run-20260329-165442 | app.runner | Starting scraper run for the last 24 hours
+2026-03-29 16:54:43,750 | INFO | run-20260329-165442 | app.runner | Scraped 0 YouTube videos from channel UCn8ujwUInbJkBhffxqAPBVQ
+2026-03-29 16:54:44,635 | INFO | run-20260329-165442 | app.runner | Scraped 0 YouTube videos from channel UCawZsQWqfGSbCI5yjkdVkTA
+2026-03-29 16:54:46,976 | INFO | run-20260329-165442 | app.runner | Scraped 0 OpenAI articles
+2026-03-29 16:54:49,848 | INFO | run-20260329-165442 | app.runner | Scraped 0 Anthropic articles
+2026-03-29 16:54:49,850 | INFO | run-20260329-165442 | app.runner | Scraper run complete: youtube=0 openai=0 anthropic=0
+2026-03-29 16:54:49,851 | INFO | run-20260329-165442 | app.daily_runner | ✓ Scraped 0 YouTube videos, 0 OpenAI articles, 0 Anthropic articles
+2026-03-29 16:54:49,851 | INFO | run-20260329-165442 | app.daily_runner | [2/5] Processing Anthropic markdown...
+2026-03-29 16:54:49,885 | INFO | run-20260329-165442 | app.services.process_anthropic | Starting Anthropic markdown processing
+2026-03-29 16:54:49,997 | INFO | run-20260329-165442 | app.services.process_anthropic | Anthropic markdown processing complete: total=0 processed=0 failed=0
+2026-03-29 16:54:49,998 | INFO | run-20260329-165442 | app.daily_runner | ✓ Processed 0 Anthropic articles (0 failed)
+2026-03-29 16:54:49,999 | INFO | run-20260329-165442 | app.daily_runner | [3/5] Processing YouTube transcripts...
+2026-03-29 16:54:49,999 | INFO | run-20260329-165442 | app.services.process_youtube | Starting YouTube transcript processing
+2026-03-29 16:54:50,028 | INFO | run-20260329-165442 | app.services.process_youtube | YouTube transcript processing complete: total=0 processed=0 unavailable=0 failed=0
+2026-03-29 16:54:50,028 | INFO | run-20260329-165442 | app.daily_runner | ✓ Processed 0 transcripts (0 unavailable)
+2026-03-29 16:54:50,028 | INFO | run-20260329-165442 | app.daily_runner | [4/5] Creating digests for articles...
+2026-03-29 16:54:51,437 | INFO | run-20260329-165442 | app.services.process_digest | Starting digest processing for 2 articles
+2026-03-29 16:54:51,437 | INFO | run-20260329-165442 | app.services.process_digest | [1/2] Processing youtube: The Future Live | 03.27.26 (ID: x0IMSUA5_uU)
+2026-03-29 16:54:51,438 | INFO | run-20260329-165442 | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-03-29 16:54:58,473 | INFO | run-20260329-165442 | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-03-29 16:54:58,498 | INFO | run-20260329-165442 | app.services.process_digest | ✓ Successfully created digest for youtube x0IMSUA5_uU
+2026-03-29 16:54:58,503 | INFO | run-20260329-165442 | app.services.process_digest | [2/2] Processing youtube: ARC AGI 3 just dropped, what it means for AGI (ID: UkCfrNTzUMM)
+2026-03-29 16:54:58,503 | INFO | run-20260329-165442 | google_genai.models | AFC is enabled with max remote calls: 10.
+2026-03-29 16:55:08,487 | INFO | run-20260329-165442 | httpx | HTTP Request: POST https://generativelanguage.googleapis.com/v1beta/models/gemini-3-flash-preview:generateContent "HTTP/1.1 200 OK"
+2026-03-29 16:55:08,505 | INFO | run-20260329-165442 | app.services.process_digest | ✓ Successfully created digest for youtube UkCfrNTzUMM
+2026-03-29 16:55:08,507 | INFO | run-20260329-165442 | app.services.process_digest | Processing complete: 2 processed, 0 failed out of 2 total
+2026-03-29 16:55:08,507 | INFO | run-20260329-165442 | app.daily_runner | ✓ Created 2 digests (0 failed out of 2 total)
+2026-03-29 16:55:08,507 | INFO | run-20260329-165442 | app.daily_runner | [5/5] Generating and sending email digest...
+2026-03-29 16:55:10,908 | WARNING | run-20260329-165442 | app.services.process_email | No digests found from the last 24 hours
+2026-03-29 16:55:10,908 | ERROR | run-20260329-165442 | app.services.process_email | Error sending email: No digests available
+2026-03-29 16:55:10,919 | ERROR | run-20260329-165442 | app.daily_runner | ✗ Failed to send email: No digests available
+2026-03-29 16:55:10,919 | INFO | run-20260329-165442 | app.daily_runner | ============================================================
+2026-03-29 16:55:10,919 | INFO | run-20260329-165442 | app.daily_runner | Pipeline Summary
+2026-03-29 16:55:10,919 | INFO | run-20260329-165442 | app.daily_runner | ============================================================
+2026-03-29 16:55:10,924 | INFO | run-20260329-165442 | app.daily_runner | Duration: 28.4 seconds
+2026-03-29 16:55:10,924 | INFO | run-20260329-165442 | app.daily_runner | Scraped: {'youtube': 0, 'openai': 0, 'anthropic': 0}
+2026-03-29 16:55:10,924 | INFO | run-20260329-165442 | app.daily_runner | Processed: {'anthropic': {'total': 0, 'processed': 0, 'failed': 0}, 'youtube': {'total': 0, 'processed': 0, 'unavailable': 0, 'failed': 0}}
+2026-03-29 16:55:10,926 | INFO | run-20260329-165442 | app.daily_runner | Digests: {'total': 2, 'processed': 2, 'failed': 0}
+2026-03-29 16:55:10,926 | INFO | run-20260329-165442 | app.daily_runner | Email: Failed
+2026-03-29 16:55:10,926 | INFO | run-20260329-165442 | app.daily_runner | ============================================================

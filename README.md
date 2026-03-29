@@ -99,10 +99,13 @@ Email introduction + HTML rendering + SMTP delivery
 │   ├── config.py
 │   ├── daily_runner.py
 │   ├── runner.py
+|   ├── logging_config.py    
 │   └── settings.py
 ├── docker/
 │   └── docker-compose.yaml
-│   
+├── logs/
+│   └── pipeline.log
+│
 ├── main.py
 ├── pyproject.toml
 └── README.md
