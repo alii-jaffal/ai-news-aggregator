@@ -1,3 +1,4 @@
+import logging
 from app.settings import settings
 import smtplib
 import html as html_lib
@@ -5,6 +6,7 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import markdown
 
+logger = logging.getLogger(__name__)
 
 EMAIL = settings.EMAIL
 APP_PASSWORD = settings.APP_PASSWORD
@@ -141,8 +143,10 @@ def send_email(
         msg.attach(MIMEText(body_html, "html", "utf-8"))
 
     with smtplib.SMTP_SSL("smtp.gmail.com", 465) as smtp:
+        logger.info("Sending email to %s recipient(s)", len(recipients))
         smtp.login(EMAIL, APP_PASSWORD)
         smtp.sendmail(EMAIL, recipients, msg.as_string())
+        logger.info("SMTP send completed successfully")
 
 
 def markdown_to_html(markdown_text: str) -> str:

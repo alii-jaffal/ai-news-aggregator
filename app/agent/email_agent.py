@@ -1,3 +1,4 @@
+import logging
 from app.settings import settings
 import json
 from datetime import datetime
@@ -5,7 +6,7 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from google import genai
 
-
+logger = logging.getLogger(__name__)
 
 class EmailIntroduction(BaseModel):
     greeting: str = Field(description="Personalized greeting with user's name and date")
@@ -136,7 +137,7 @@ class EmailAgent:
             return intro
 
         except Exception as e:
-            print(f"Error generating introduction: {e}")
+            logger.warning("Error generating email introduction: %s", e)
             return EmailIntroduction(
                 greeting=f"Hey {name}, here is your daily digest of AI news for {current_date}.",
                 introduction="Here are the top 10 AI news articles ranked by relevance to your interests.",

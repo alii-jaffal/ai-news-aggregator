@@ -1,10 +1,11 @@
+import logging
 from app.settings import settings
 import json
 from typing import Optional
 from pydantic import BaseModel, ValidationError
 from google import genai
 
-
+logger = logging.getLogger(__name__)
 
 
 PROMPT = """
@@ -68,8 +69,8 @@ class DigestAgent:
             return DigestOutput(**data)
 
         except (json.JSONDecodeError, ValidationError) as e:
-            print(f"Digest output parsing/validation error: {e}\nRaw output: {getattr(response, 'text', None)}")
+            logger.warning("Digest output parsing/validation error: %s | raw_output=%s", e, getattr(response, "text", None),)
             return None
         except Exception as e:
-            print(f"Error generating digest: {e}")
+            logger.warning("Error generating digest: %s", e)
             return None

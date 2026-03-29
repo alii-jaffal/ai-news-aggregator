@@ -6,11 +6,7 @@ from app.profiles.user_profile import USER_PROFILE
 from app.database.repository import Repository
 from app.services.email_service import send_email, digest_to_html
 
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s - %(levelname)s - %(message)s",
-    datefmt="%Y-%m-%d %H:%M:%S",
-)
+
 logger = logging.getLogger(__name__)
 
 
@@ -103,7 +99,7 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
         }
 
     except ValueError as e:
-        logger.error(f"Error sending email: {e}")
+        logger.error("Error sending email: %s", e)
         return {
             "success": False,
             "error": str(e),
@@ -115,12 +111,3 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
             "error": f"Unexpected error: {e}",
         }
 
-
-if __name__ == "__main__":
-    result = send_digest_email(hours=24, top_n=10)
-    if result.get("success"):
-        print("\n=== Email Digest Sent ===")
-        print(f"Subject: {result['subject']}")
-        print(f"Articles: {result['articles_count']}")
-    else:
-        print(f"Error: {result.get('error')}")

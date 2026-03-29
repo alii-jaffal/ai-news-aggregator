@@ -1,10 +1,11 @@
+import logging
 from app.settings import settings
 from typing import List
 import json
 from google import genai
 from pydantic import BaseModel, Field
 
-
+logger = logging.getLogger(__name__)
 
 class RankedArticle(BaseModel):
     digest_id: str = Field(description="The ID of the digest (article_type:article_id)")
@@ -121,6 +122,6 @@ class CuratorAgent:
             return ranked.articles
 
         except Exception as e:
-            print(f"Error ranking digests: {e}")
+            logger.warning("Error ranking digests: %s", e)
             return []
 

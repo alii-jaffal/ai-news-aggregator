@@ -3,11 +3,7 @@ from typing import Optional
 from app.agent.digest_agent import DigestAgent
 from app.database.repository import Repository
 
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
-    datefmt='%Y-%m-%d %H:%M:%S'
-)
+
 logger = logging.getLogger(__name__)
 
 
@@ -50,9 +46,9 @@ def process_digests(limit: Optional[int] = None) -> dict:
             else:
                 failed += 1
                 logger.warning(f"✗ Failed to generate digest for {article_type} {article_id}")
-        except Exception as e:
+        except Exception:
             failed += 1
-            logger.error(f"✗ Error processing {article_type} {article_id}: {e}")
+            logger.exception("Error processing digest for %s %s", article_type, article_id)
     
     logger.info(f"Processing complete: {processed} processed, {failed} failed out of {total} total")
     
@@ -61,10 +57,3 @@ def process_digests(limit: Optional[int] = None) -> dict:
         "processed": processed,
         "failed": failed
     }
-
-
-if __name__ == "__main__":
-    result = process_digests()
-    print(f"Total articles: {result['total']}")
-    print(f"Processed: {result['processed']}")
-    print(f"Failed: {result['failed']}")

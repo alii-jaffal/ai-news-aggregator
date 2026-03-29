@@ -1,3 +1,4 @@
+import logging
 from typing import List
 from .config import YOUTUBE_CHANNELS
 from .scrapers.youtube import YouTubeScraper, ChannelVideo
@@ -5,6 +6,7 @@ from .scrapers.openai import OpenAIScraper, OpenAIArticle
 from .scrapers.anthropic import AnthropicScraper, AnthropicArticle
 from .database.repository import Repository
 
+logger = logging.getLogger(__name__)
 
 def run_scrapers(hours: int = 24) -> dict:
     youtube_scraper = YouTubeScraper()
@@ -14,8 +16,12 @@ def run_scrapers(hours: int = 24) -> dict:
     
     youtube_videos = []
     video_dicts = []
+
+    logger.info("Starting scraper run for the last %s hours", hours)
+
     for channel_id in YOUTUBE_CHANNELS:
         videos = youtube_scraper.get_latest_videos(channel_id, hours=hours)
+        logger.info("Scraped %s YouTube videos from channel %s", len(videos), channel_id)
         youtube_videos.extend(videos)
         video_dicts.extend([
             {
@@ -31,7 +37,11 @@ def run_scrapers(hours: int = 24) -> dict:
         ])
     
     openai_articles = openai_scraper.get_articles(hours=hours)
+    logger.info("Scraped %s OpenAI articles", len(openai_articles))
+
     anthropic_articles = anthropic_scraper.get_articles(hours=hours)
+    logger.info("Scraped %s Anthropic articles", len(anthropic_articles))
+
     
     if video_dicts:
         repo.bulk_create_youtube_videos(video_dicts)
@@ -64,15 +74,15 @@ def run_scrapers(hours: int = 24) -> dict:
         ]
         repo.bulk_create_anthropic_articles(article_dicts)
     
+    logger.info(
+        "Scraper run complete: youtube=%s openai=%s anthropic=%s",
+        len(youtube_videos),
+        len(openai_articles),
+        len(anthropic_articles),
+    )
+    
     return {
         "youtube": youtube_videos,
         "openai": openai_articles,
         "anthropic": anthropic_articles,
     }
-
-
-if __name__ == "__main__":
-    results = run_scrapers(hours=24)
-    print(f"YouTube videos: {len(results['youtube'])}")
-    print(f"OpenAI articles: {len(results['openai'])}")
-    print(f"Anthropic articles: {len(results['anthropic'])}")
