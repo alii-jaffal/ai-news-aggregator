@@ -12,3 +12,6 @@ wheels/
 ai-news-aggregator.code-workspace
 
 .env
+
+logs/
+*.log
