@@ -40,8 +40,10 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
         logger.info("[2/5] Processing Anthropic markdown...")
         anthropic_result = process_anthropic_markdown()
         results["processing"]["anthropic"] = anthropic_result
-        logger.info(f"✓ Processed {anthropic_result['processed']} Anthropic articles "
-                    f"({anthropic_result['failed']} failed)")
+        logger.info(
+            f"✓ Processed {anthropic_result['processed']} Anthropic articles "
+            f"({anthropic_result['unavailable']} unavailable, {anthropic_result['failed']} failed)"
+        )
         
         logger.info("[3/5] Processing YouTube transcripts...")
         youtube_result = process_youtube_transcripts()

@@ -11,7 +11,7 @@ def process_digests(limit: Optional[int] = None) -> dict:
     agent = DigestAgent()
     repo = Repository()
 
-    articles = repo.get_articles_without_digest(limit=limit)
+    articles = repo.get_articles_pending_digest(limit=limit)
     total = len(articles)
     processed = 0
     failed = 0
@@ -41,13 +41,16 @@ def process_digests(limit: Optional[int] = None) -> dict:
                     summary=digest_result.summary,
                     published_at=article.get("published_at")
                 )
+                repo.mark_digest_completed(article_type, article_id)
                 processed += 1
                 logger.info(f"✓ Successfully created digest for {article_type} {article_id}")
             else:
+                repo.mark_digest_failed(article_type, article_id, "digest_generation_returned_none")
                 failed += 1
                 logger.warning(f"✗ Failed to generate digest for {article_type} {article_id}")
-        except Exception:
+        except Exception as e:
             failed += 1
+            repo.mark_digest_failed(article_type, article_id, type(e).__name__)
             logger.exception("Error processing digest for %s %s", article_type, article_id)
     
     logger.info(f"Processing complete: {processed} processed, {failed} failed out of {total} total")

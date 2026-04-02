@@ -11,37 +11,39 @@ def process_anthropic_markdown(limit: Optional[int] = None) -> dict:
 
     logger.info("Starting Anthropic markdown processing")
 
-    articles = repo.get_anthropic_articles_without_markdown(limit=limit)
+    articles = repo.get_anthropic_articles_pending_markdown(limit=limit)
     processed = 0
     failed = 0
+    unavailable = 0
 
     for article in articles:
         try:
             markdown = scraper.url_to_markdown(article.url)
+
             if markdown:
-                repo.update_anthropic_article_markdown(article.guid, markdown)
+                repo.mark_anthropic_markdown_completed(article.guid, markdown)
                 processed += 1
             else:
-                failed += 1
-        except Exception:
+                repo.mark_anthropic_markdown_unavailable(article.guid, "no_markdown_extracted")
+                unavailable += 1
+
+        except Exception as e:
+            repo.mark_anthropic_markdown_failed(article.guid, type(e).__name__)
             failed += 1
             logger.exception("Error processing Anthropic article %s", article.guid)
             continue
     
     logger.info(
-        "Anthropic markdown processing complete: total=%s processed=%s failed=%s",
+        "Anthropic markdown processing complete: total=%s processed=%s unavailable=%s failed=%s",
         len(articles),
         processed,
+        unavailable,
         failed,
     )
 
     return {
         "total": len(articles),
         "processed": processed,
-        "failed": failed
+        "unavailable": unavailable,
+        "failed": failed,
     }
-
-
-if __name__ == "__main__":
-    result = process_anthropic_markdown()
-    print(result)

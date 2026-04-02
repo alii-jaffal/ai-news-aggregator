@@ -1,6 +1,6 @@
 from typing import Optional
 from datetime import datetime, timezone
-from sqlalchemy import Column, String, DateTime, Text
+from sqlalchemy import Column, String, DateTime, Text, Integer
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
@@ -17,6 +17,12 @@ class YouTubeVideo(Base):
     description = Column(Text)
     transcript = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    transcript_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    transcript_length = Column(Integer, nullable=True)
+    transcript_failure_reason = Column(String(100), nullable=True)
+    content_richness = Column(String(20), nullable=False, default="missing", server_default="missing")
+    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    digest_failure_reason = Column(String(100), nullable=True)
 
 
 class OpenAIArticle(Base):
@@ -29,6 +35,11 @@ class OpenAIArticle(Base):
     published_at = Column(DateTime, nullable=False)
     category = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    content_length = Column(Integer, nullable=True)
+    content_richness = Column(String(20), nullable=False, default="missing", server_default="missing")
+    content_source_type = Column(String(20), nullable=False, default="rss", server_default="rss")
+    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    digest_failure_reason = Column(String(100), nullable=True)
 
 
 class AnthropicArticle(Base):
@@ -42,6 +53,12 @@ class AnthropicArticle(Base):
     category = Column(String, nullable=True)
     markdown = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+    markdown_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    markdown_length = Column(Integer, nullable=True)
+    markdown_failure_reason = Column(String(100), nullable=True)
+    content_richness = Column(String(20), nullable=False, default="missing", server_default="missing")
+    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    digest_failure_reason = Column(String(100), nullable=True)
 
 
 class Digest(Base):
