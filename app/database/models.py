@@ -17,11 +17,11 @@ class YouTubeVideo(Base):
     description = Column(Text)
     transcript = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    transcript_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    transcript_status = Column(String(20), nullable=False, default="pending", server_default="pending", index=True)
     transcript_length = Column(Integer, nullable=True)
     transcript_failure_reason = Column(String(100), nullable=True)
     content_richness = Column(String(20), nullable=False, default="missing", server_default="missing")
-    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending", index=True)
     digest_failure_reason = Column(String(100), nullable=True)
 
 
@@ -38,7 +38,7 @@ class OpenAIArticle(Base):
     content_length = Column(Integer, nullable=True)
     content_richness = Column(String(20), nullable=False, default="missing", server_default="missing")
     content_source_type = Column(String(20), nullable=False, default="rss", server_default="rss")
-    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending", index=True)
     digest_failure_reason = Column(String(100), nullable=True)
 
 
@@ -53,11 +53,11 @@ class AnthropicArticle(Base):
     category = Column(String, nullable=True)
     markdown = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
-    markdown_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    markdown_status = Column(String(20), nullable=False, default="pending", server_default="pending", index=True)
     markdown_length = Column(Integer, nullable=True)
     markdown_failure_reason = Column(String(100), nullable=True)
     content_richness = Column(String(20), nullable=False, default="missing", server_default="missing")
-    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending")
+    digest_status = Column(String(20), nullable=False, default="pending", server_default="pending", index=True)
     digest_failure_reason = Column(String(100), nullable=True)
 
 

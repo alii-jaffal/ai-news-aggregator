@@ -249,6 +249,19 @@ Check:
 - Gmail app password is valid
 - the ranking step succeeded
 
+## Duplicate Handling and Rerun Safety
+
+The pipeline is designed to be rerun safely for the same time window.
+
+- YouTube videos are deduplicated by `video_id`
+- OpenAI articles are deduplicated by `guid`
+- Anthropic articles are deduplicated by `guid`
+- Digests are deduplicated by deterministic IDs in the form `article_type:article_id`
+
+Source ingestion uses batch existence checks before inserts, so repeated runs do not create duplicate rows.
+
+Enrichment stages use explicit status fields such as `transcript_status`, `markdown_status`, and `digest_status`, which makes partial reruns intentional and safe.
+
 ## Future improvement areas
 
 - retry and fallback handling for Gemini failures

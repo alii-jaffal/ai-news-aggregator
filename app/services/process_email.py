@@ -10,7 +10,7 @@ from app.services.email_service import send_email, digest_to_html
 logger = logging.getLogger(__name__)
 
 
-def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse:
+def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse | None:
     curator = CuratorAgent(USER_PROFILE)
     email_agent = EmailAgent(USER_PROFILE)
     repo = Repository()
@@ -19,12 +19,12 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     total = len(digests)
 
     if total == 0:
-        logger.warning(f"No digests found from the last {hours} hours")
-        raise ValueError("No digests available")
+        logger.info("No digests found from the last %s hours while generating email digest.", hours)
+        return None
 
     digest_map = {d["id"]: d for d in digests}
 
-    logger.info(f"Ranking {total} digests for email generation")
+    logger.info("Ranking %s digests for email generation", total)
     ranked_articles = curator.rank_digests(digests)
 
     if not ranked_articles:
@@ -33,7 +33,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
 
     ranked_articles = sorted(ranked_articles, key=lambda a: a.rank)
 
-    logger.info(f"Generating email digest with top {top_n} articles")
+    logger.warning("%s ranked items were not found in digest_map (ID mismatch?)", missing)
 
     article_details: List[RankedArticleDetail] = []
     missing = 0
@@ -67,16 +67,39 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     )
 
     logger.info("Email digest generated successfully")
-    logger.info("\n=== Email Introduction ===")
+    logger.info("=== Email Introduction ===")
     logger.info(email_digest.introduction.greeting)
-    logger.info(f"\n{email_digest.introduction.introduction}")
+    logger.info(f"{email_digest.introduction.introduction}")
 
     return email_digest
 
 
 def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
     try:
+        repo = Repository()
+        digests = repo.get_recent_digests(hours=hours)
+
+        if not digests:
+            logger.info("No digests found from the last %s hours. Skipping email send.", hours)
+            return {
+                "success": True,
+                "sent": False,
+                "reason": "no_digests",
+                "subject": None,
+                "articles_count": 0,
+            }
+
         result = generate_email_digest(hours=hours, top_n=top_n)
+
+        if result is None:
+            logger.info("No email digest content available. Skipping email send.")
+            return {
+                "success": True,
+                "sent": False,
+                "reason": "no_digests",
+                "subject": None,
+                "articles_count": 0,
+            }
 
         markdown_content = result.to_markdown()
         html_content = digest_to_html(result)
@@ -94,6 +117,7 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
         logger.info("Email sent successfully!")
         return {
             "success": True,
+            "sent": True,
             "subject": subject,
             "articles_count": len(result.articles),
         }
@@ -102,12 +126,14 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
         logger.error("Error sending email: %s", e)
         return {
             "success": False,
+            "sent": False,
             "error": str(e),
         }
-    except Exception as e:
-        logger.exception(f"Unexpected error sending email: {e}")
+    except Exception:
+        logger.exception("Unexpected error sending email")
         return {
             "success": False,
-            "error": f"Unexpected error: {e}",
+            "sent": False,
+            "error": "Unexpected error during email sending",
         }
 

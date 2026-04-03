@@ -60,12 +60,15 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
         logger.info("[5/5] Generating and sending email digest...")
         email_result = send_digest_email(hours=hours, top_n=top_n)
         results["email"] = email_result
-        
-        if email_result["success"]:
-            logger.info(f"✓ Email sent successfully with {email_result['articles_count']} articles")
+
+        if email_result.get("success") and email_result.get("sent"):
+            logger.info("✓ Email sent successfully with %s articles", email_result["articles_count"])
+            results["success"] = True
+        elif email_result.get("success") and not email_result.get("sent"):
+            logger.info("✓ Email step skipped: %s", email_result.get("reason", "no_send_needed"))
             results["success"] = True
         else:
-            logger.error(f"✗ Failed to send email: {email_result.get('error', 'Unknown error')}")
+            logger.error("✗ Failed to send email: %s", email_result.get("error", "Unknown error"))
         
     except Exception as e:
         logger.exception("Pipeline failed")
@@ -83,7 +86,18 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
     logger.info(f"Scraped: {results['scraping']}")
     logger.info(f"Processed: {results['processing']}")
     logger.info(f"Digests: {results['digests']}")
-    logger.info(f"Email: {'Sent' if results['success'] else 'Failed'}")
+    
+    email_result = results.get("email", {})
+
+    if email_result.get("success") and email_result.get("sent"):
+        email_status = "Sent"
+    elif email_result.get("success") and not email_result.get("sent"):
+        email_status = "Skipped"
+    else:
+        email_status = "Failed"
+
+    logger.info(f"Email: {email_status}")
+
     logger.info("=" * 60)
     
     return results

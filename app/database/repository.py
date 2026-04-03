@@ -85,11 +85,25 @@ class Repository:
     
 
     def bulk_create_youtube_videos(self, videos: List[dict]) -> int:
+        if not videos:
+            return 0
+
+        incoming_ids = {v["video_id"] for v in videos}
+
+        existing_ids = {
+            row[0]
+            for row in self.session.query(YouTubeVideo.video_id)
+            .filter(YouTubeVideo.video_id.in_(incoming_ids))
+            .all()
+        }
+
         new_videos = []
         for v in videos:
-            existing = self.session.query(YouTubeVideo).filter_by(video_id=v["video_id"]).first()
-            if not existing:
-                new_videos.append(YouTubeVideo(
+            if v["video_id"] in existing_ids:
+                continue
+
+            new_videos.append(
+                YouTubeVideo(
                     video_id=v["video_id"],
                     title=v["title"],
                     url=v["url"],
@@ -103,19 +117,36 @@ class Repository:
                     content_richness="full" if v.get("transcript") else "missing",
                     digest_status="pending",
                     digest_failure_reason=None,
-                ))
+                )
+            )
+
         if new_videos:
             self.session.add_all(new_videos)
             self.session.commit()
+
         return len(new_videos)
     
 
     def bulk_create_openai_articles(self, articles: List[dict]) -> int:
+        if not articles:
+            return 0
+
+        incoming_ids = {a["guid"] for a in articles}
+
+        existing_ids = {
+            row[0]
+            for row in self.session.query(OpenAIArticle.guid)
+            .filter(OpenAIArticle.guid.in_(incoming_ids))
+            .all()
+        }
+
         new_articles = []
         for a in articles:
-            existing = self.session.query(OpenAIArticle).filter_by(guid=a["guid"]).first()
-            if not existing:
-                new_articles.append(OpenAIArticle(
+            if a["guid"] in existing_ids:
+                continue
+
+            new_articles.append(
+                OpenAIArticle(
                     guid=a["guid"],
                     title=a["title"],
                     url=a["url"],
@@ -127,19 +158,36 @@ class Repository:
                     content_source_type="rss",
                     digest_status="pending",
                     digest_failure_reason=None,
-                ))
+                )
+            )
+
         if new_articles:
             self.session.add_all(new_articles)
             self.session.commit()
+
         return len(new_articles)
     
 
     def bulk_create_anthropic_articles(self, articles: List[dict]) -> int:
+        if not articles:
+            return 0
+
+        incoming_ids = {a["guid"] for a in articles}
+
+        existing_ids = {
+            row[0]
+            for row in self.session.query(AnthropicArticle.guid)
+            .filter(AnthropicArticle.guid.in_(incoming_ids))
+            .all()
+        }
+
         new_articles = []
         for a in articles:
-            existing = self.session.query(AnthropicArticle).filter_by(guid=a["guid"]).first()
-            if not existing:
-                new_articles.append(AnthropicArticle(
+            if a["guid"] in existing_ids:
+                continue
+
+            new_articles.append(
+                AnthropicArticle(
                     guid=a["guid"],
                     title=a["title"],
                     url=a["url"],
@@ -152,10 +200,13 @@ class Repository:
                     content_richness="missing",
                     digest_status="pending",
                     digest_failure_reason=None,
-                ))
+                )
+            )
+
         if new_articles:
             self.session.add_all(new_articles)
             self.session.commit()
+
         return len(new_articles)
     
 
@@ -312,6 +363,11 @@ class Repository:
                 "content_length": article.markdown_length,
                 "content_richness": article.content_richness,
             })
+        
+        articles.sort(
+            key=lambda item: item["published_at"] or datetime.min.replace(tzinfo=timezone.utc),
+            reverse=True,
+        )
 
         if limit:
             articles = articles[:limit]
