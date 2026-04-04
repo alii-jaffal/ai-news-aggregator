@@ -16,11 +16,11 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     repo = Repository()
 
     digests = repo.get_recent_digests(hours=hours)
-    total = len(digests)
-
-    if total == 0:
+    if not digests:
         logger.info("No digests found from the last %s hours while generating email digest.", hours)
         return None
+
+    total = len(digests)
 
     digest_map = {d["id"]: d for d in digests}
 
@@ -32,8 +32,6 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
         raise ValueError("Failed to rank articles")
 
     ranked_articles = sorted(ranked_articles, key=lambda a: a.rank)
-
-    logger.warning("%s ranked items were not found in digest_map (ID mismatch?)", missing)
 
     article_details: List[RankedArticleDetail] = []
     missing = 0
@@ -58,7 +56,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
         )
 
     if missing:
-        logger.warning(f"{missing} ranked items were not found in digest_map (ID mismatch?)")
+        logger.warning("%s ranked items were not found in digest_map (ID mismatch?)", missing)
 
     email_digest = email_agent.create_email_digest_response(
         ranked_articles=article_details,
@@ -69,26 +67,13 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     logger.info("Email digest generated successfully")
     logger.info("=== Email Introduction ===")
     logger.info(email_digest.introduction.greeting)
-    logger.info(f"{email_digest.introduction.introduction}")
+    logger.info(email_digest.introduction.introduction)
 
     return email_digest
 
 
 def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
     try:
-        repo = Repository()
-        digests = repo.get_recent_digests(hours=hours)
-
-        if not digests:
-            logger.info("No digests found from the last %s hours. Skipping email send.", hours)
-            return {
-                "success": True,
-                "sent": False,
-                "reason": "no_digests",
-                "subject": None,
-                "articles_count": 0,
-            }
-
         result = generate_email_digest(hours=hours, top_n=top_n)
 
         if result is None:
