@@ -12,7 +12,6 @@ EMAIL = settings.EMAIL
 APP_PASSWORD = settings.APP_PASSWORD
 
 
-
 def _wrap_html_body(inner_html: str) -> str:
     return f"""<!DOCTYPE html>
 <html>
@@ -165,16 +164,26 @@ def digest_to_html(digest_response) -> str:
       - .to_markdown() -> markdown_to_html(...)
       - fallback to str(...)
     """
-    from app.agent.email_agent import EmailDigestResponse  # local import to avoid circular imports
+    from app.agent.email_agent import (
+        EmailDigestResponse,
+    )  # local import to avoid circular imports
 
     if not isinstance(digest_response, EmailDigestResponse):
-        md = digest_response.to_markdown() if hasattr(digest_response, "to_markdown") else str(digest_response)
+        md = (
+            digest_response.to_markdown()
+            if hasattr(digest_response, "to_markdown")
+            else str(digest_response)
+        )
         return markdown_to_html(md)
 
     html_parts: list[str] = []
 
-    greeting_html = markdown.markdown(digest_response.introduction.greeting, extensions=["extra", "nl2br"])
-    introduction_html = markdown.markdown(digest_response.introduction.introduction, extensions=["extra", "nl2br"])
+    greeting_html = markdown.markdown(
+        digest_response.introduction.greeting, extensions=["extra", "nl2br"]
+    )
+    introduction_html = markdown.markdown(
+        digest_response.introduction.introduction, extensions=["extra", "nl2br"]
+    )
 
     html_parts.append(f'<div class="greeting">{greeting_html}</div>')
     html_parts.append(f'<div class="introduction">{introduction_html}</div>')
@@ -189,7 +198,9 @@ def digest_to_html(digest_response) -> str:
         html_parts.append(f"<div>{summary_html}</div>")
 
         safe_url = html_lib.escape(article.url)
-        html_parts.append(f'<p><a href="{safe_url}" class="article-link">Read more →</a></p>')
+        html_parts.append(
+            f'<p><a href="{safe_url}" class="article-link">Read more →</a></p>'
+        )
         html_parts.append("<hr>")
 
     return _wrap_html_body("\n".join(html_parts))
@@ -202,7 +213,14 @@ def send_email_to_self(subject: str, body_markdown_or_text: str) -> None:
     - Also sends an HTML version by converting from markdown
     """
     if not EMAIL:
-        raise ValueError("EMAIL environment variable is not set. Please set it in your .env file.")
+        raise ValueError(
+            "EMAIL environment variable is not set. Please set it in your .env file."
+        )
 
     body_html = markdown_to_html(body_markdown_or_text)
-    send_email(subject=subject, body_text=body_markdown_or_text, body_html=body_html, recipients=[EMAIL])
+    send_email(
+        subject=subject,
+        body_text=body_markdown_or_text,
+        body_html=body_html,
+        recipients=[EMAIL],
+    )

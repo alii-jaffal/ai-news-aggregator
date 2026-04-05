@@ -8,9 +8,12 @@ from google import genai
 
 logger = logging.getLogger(__name__)
 
+
 class EmailIntroduction(BaseModel):
     greeting: str = Field(description="Personalized greeting with user's name and date")
-    introduction: str = Field(description="2-3 sentence overview of what's in the top 10 ranked articles")
+    introduction: str = Field(
+        description="2-3 sentence overview of what's in the top 10 ranked articles"
+    )
 
 
 class RankedArticleDetail(BaseModel):

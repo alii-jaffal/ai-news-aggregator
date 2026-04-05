@@ -22,11 +22,9 @@ PROMPT = """
 """
 
 
-
 class DigestOutput(BaseModel):
     title: str
     summary: str
-
 
 
 class DigestAgent:
@@ -39,7 +37,9 @@ class DigestAgent:
         self.model = "gemini-3-flash-preview"
         self.system_prompt = PROMPT
 
-    def generate_digest(self, title: str, content: str, article_type: str) -> Optional[DigestOutput]:
+    def generate_digest(
+        self, title: str, content: str, article_type: str
+    ) -> Optional[DigestOutput]:
         try:
             user_prompt = (
                 f"Create a digest for this {article_type}.\n\n"
@@ -49,18 +49,18 @@ class DigestAgent:
 
             response = self.client.models.generate_content(
                 model=self.model,
-                contents=user_prompt,  
+                contents=user_prompt,
                 config={
                     "system_instruction": self.system_prompt,
                     "temperature": 0.3,
-                    "response_mime_type": "application/json", 
+                    "response_mime_type": "application/json",
                     "response_schema": {
                         "type": "object",
                         "properties": {
                             "title": {"type": "string"},
                             "summary": {"type": "string"},
                         },
-                        "required": ["title", "summary"]
+                        "required": ["title", "summary"],
                     },
                 },
             )
@@ -69,7 +69,11 @@ class DigestAgent:
             return DigestOutput(**data)
 
         except (json.JSONDecodeError, ValidationError) as e:
-            logger.warning("Digest output parsing/validation error: %s | raw_output=%s", e, getattr(response, "text", None),)
+            logger.warning(
+                "Digest output parsing/validation error: %s | raw_output=%s",
+                e,
+                getattr(response, "text", None),
+            )
             return None
         except Exception as e:
             logger.warning("Error generating digest: %s", e)

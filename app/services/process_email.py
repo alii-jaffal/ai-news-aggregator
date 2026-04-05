@@ -10,14 +10,19 @@ from app.services.email_service import send_email, digest_to_html
 logger = logging.getLogger(__name__)
 
 
-def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse | None:
+def generate_email_digest(
+    hours: int = 24, top_n: int = 10
+) -> EmailDigestResponse | None:
     curator = CuratorAgent(USER_PROFILE)
     email_agent = EmailAgent(USER_PROFILE)
     repo = Repository()
 
     digests = repo.get_recent_digests(hours=hours)
     if not digests:
-        logger.info("No digests found from the last %s hours while generating email digest.", hours)
+        logger.info(
+            "No digests found from the last %s hours while generating email digest.",
+            hours,
+        )
         return None
 
     total = len(digests)
@@ -56,7 +61,9 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
         )
 
     if missing:
-        logger.warning("%s ranked items were not found in digest_map (ID mismatch?)", missing)
+        logger.warning(
+            "%s ranked items were not found in digest_map (ID mismatch?)", missing
+        )
 
     email_digest = email_agent.create_email_digest_response(
         ranked_articles=article_details,
@@ -121,4 +128,3 @@ def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
             "sent": False,
             "error": "Unexpected error during email sending",
         }
-

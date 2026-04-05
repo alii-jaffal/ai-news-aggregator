@@ -7,11 +7,16 @@ from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
+
 class RankedArticle(BaseModel):
     digest_id: str = Field(description="The ID of the digest (article_type:article_id)")
-    relevance_score: float = Field(description="Relevance score from 0.0 to 10.0", ge=0.0, le=10.0)
+    relevance_score: float = Field(
+        description="Relevance score from 0.0 to 10.0", ge=0.0, le=10.0
+    )
     rank: int = Field(description="Rank position (1 = most relevant)", ge=1)
-    reasoning: str = Field(description="Brief explanation of why this article is ranked here")
+    reasoning: str = Field(
+        description="Brief explanation of why this article is ranked here"
+    )
 
 
 class RankedDigestList(BaseModel):
@@ -47,13 +52,14 @@ class CuratorAgent:
         self.model = "gemini-3-flash-preview"
         self.user_profile = user_profile
         self.system_prompt = self._build_system_prompt()
-    
 
     def _build_system_prompt(self) -> str:
-        interests = "\n".join(f"- {interest}" for interest in self.user_profile["interests"])
+        interests = "\n".join(
+            f"- {interest}" for interest in self.user_profile["interests"]
+        )
         preferences = self.user_profile["preferences"]
         pref_text = "\n".join(f"- {k}: {v}" for k, v in preferences.items())
-        
+
         return f"""
                     {CURATOR_PROMPT}
 
@@ -65,15 +71,16 @@ class CuratorAgent:
                     Preferences: {pref_text}
                  """
 
-
     def rank_digests(self, digests: List[dict]) -> List[RankedArticle]:
         if not digests:
             return []
 
-        digest_list = "\n\n".join([
-            f"ID: {d['id']}\nTitle: {d['title']}\nSummary: {d['summary']}\nType: {d['article_type']}"
-            for d in digests
-        ])
+        digest_list = "\n\n".join(
+            [
+                f"ID: {d['id']}\nTitle: {d['title']}\nSummary: {d['summary']}\nType: {d['article_type']}"
+                for d in digests
+            ]
+        )
 
         user_prompt = f"""
                         Rank these {len(digests)} AI news digests based on the user profile.
@@ -108,13 +115,18 @@ class CuratorAgent:
                                         "rank": {"type": "integer"},
                                         "reasoning": {"type": "string"},
                                     },
-                                    "required": ["digest_id", "relevance_score", "rank", "reasoning"]
-                                }
+                                    "required": [
+                                        "digest_id",
+                                        "relevance_score",
+                                        "rank",
+                                        "reasoning",
+                                    ],
+                                },
                             }
                         },
-                        "required": ["articles"]
-                    }
-                }
+                        "required": ["articles"],
+                    },
+                },
             )
 
             data = json.loads(response.text)
@@ -124,4 +136,3 @@ class CuratorAgent:
         except Exception as e:
             logger.warning("Error ranking digests: %s", e)
             return []
-

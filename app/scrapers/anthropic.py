@@ -44,28 +44,31 @@ class AnthropicScraper:
                     guid = entry.get("id", entry.get("link", ""))
                     if guid not in seen_guids:
                         seen_guids.add(guid)
-                        articles.append(AnthropicArticle(
-                            title=entry.get("title", ""),
-                            description=entry.get("description", ""),
-                            url=entry.get("link", ""),
-                            guid=guid,
-                            published_at=published_time,
-                            category=entry.get("tags", [{}])[0].get("term") if entry.get("tags") else None
-                        ))
-        
-        return articles
-    
+                        articles.append(
+                            AnthropicArticle(
+                                title=entry.get("title", ""),
+                                description=entry.get("description", ""),
+                                url=entry.get("link", ""),
+                                guid=guid,
+                                published_at=published_time,
+                                category=entry.get("tags", [{}])[0].get("term")
+                                if entry.get("tags")
+                                else None,
+                            )
+                        )
 
-    def url_to_markdown(self, url:str) -> Optional[str]:
+        return articles
+
+    def url_to_markdown(self, url: str) -> Optional[str]:
         try:
             result = self.converter.convert(url)
             return result.document.export_to_markdown()
         except Exception:
             return None
-        
-    
+
+
 if __name__ == "__main__":
     scraper = AnthropicScraper()
-    articles: List[AnthropicArticle] = scraper.get_articles(hours = 24)
+    articles: List[AnthropicArticle] = scraper.get_articles(hours=24)
     markdown: str = scraper.url_to_markdown(articles[1].url)
     print(markdown)

@@ -12,14 +12,14 @@ USER_PROFILE = {
         "Real-world AI applications and case studies",
         "Technical tutorials and implementation guides",
         "Research papers with practical implications",
-        "AI infrastructure and scaling challenges"
+        "AI infrastructure and scaling challenges",
     ],
     "preferences": {
         "prefer_practical": True,
         "prefer_technical_depth": True,
         "prefer_research_breakthroughs": True,
         "prefer_production_focus": True,
-        "avoid_marketing_hype": True
+        "avoid_marketing_hype": True,
     },
-    "expertise_level": "Intermediate"
+    "expertise_level": "Intermediate",
 }

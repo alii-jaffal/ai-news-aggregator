@@ -22,10 +22,14 @@ def process_youtube_transcripts(limit: Optional[int] = None) -> dict:
             transcript_result = scraper.get_transcript(video.video_id)
 
             if transcript_result:
-                repo.mark_youtube_transcript_completed(video.video_id, transcript_result.text)
+                repo.mark_youtube_transcript_completed(
+                    video.video_id, transcript_result.text
+                )
                 processed += 1
             else:
-                repo.mark_youtube_transcript_unavailable(video.video_id, "transcript_not_available")
+                repo.mark_youtube_transcript_unavailable(
+                    video.video_id, "transcript_not_available"
+                )
                 unavailable += 1
                 logger.warning("Transcript unavailable for video %s", video.video_id)
 
@@ -33,7 +37,7 @@ def process_youtube_transcripts(limit: Optional[int] = None) -> dict:
             repo.mark_youtube_transcript_failed(video.video_id, type(e).__name__)
             failed += 1
             logger.exception("Error processing video %s", video.video_id)
-        
+
     logger.info(
         "YouTube transcript processing complete: total=%s processed=%s unavailable=%s failed=%s",
         len(videos),
@@ -46,5 +50,5 @@ def process_youtube_transcripts(limit: Optional[int] = None) -> dict:
         "total": len(videos),
         "processed": processed,
         "unavailable": unavailable,
-        "failed": failed
+        "failed": failed,
     }

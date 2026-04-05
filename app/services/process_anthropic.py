@@ -5,6 +5,7 @@ from app.database.repository import Repository
 
 logger = logging.getLogger(__name__)
 
+
 def process_anthropic_markdown(limit: Optional[int] = None) -> dict:
     scraper = AnthropicScraper()
     repo = Repository()
@@ -24,7 +25,9 @@ def process_anthropic_markdown(limit: Optional[int] = None) -> dict:
                 repo.mark_anthropic_markdown_completed(article.guid, markdown)
                 processed += 1
             else:
-                repo.mark_anthropic_markdown_unavailable(article.guid, "no_markdown_extracted")
+                repo.mark_anthropic_markdown_unavailable(
+                    article.guid, "no_markdown_extracted"
+                )
                 unavailable += 1
 
         except Exception as e:
@@ -32,7 +35,7 @@ def process_anthropic_markdown(limit: Optional[int] = None) -> dict:
             failed += 1
             logger.exception("Error processing Anthropic article %s", article.guid)
             continue
-    
+
     logger.info(
         "Anthropic markdown processing complete: total=%s processed=%s unavailable=%s failed=%s",
         len(articles),
