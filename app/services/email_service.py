@@ -198,9 +198,7 @@ def digest_to_html(digest_response) -> str:
         html_parts.append(f"<div>{summary_html}</div>")
 
         safe_url = html_lib.escape(article.url)
-        html_parts.append(
-            f'<p><a href="{safe_url}" class="article-link">Read more →</a></p>'
-        )
+        html_parts.append(f'<p><a href="{safe_url}" class="article-link">Read more →</a></p>')
         html_parts.append("<hr>")
 
     return _wrap_html_body("\n".join(html_parts))
@@ -213,9 +211,7 @@ def send_email_to_self(subject: str, body_markdown_or_text: str) -> None:
     - Also sends an HTML version by converting from markdown
     """
     if not EMAIL:
-        raise ValueError(
-            "EMAIL environment variable is not set. Please set it in your .env file."
-        )
+        raise ValueError("EMAIL environment variable is not set. Please set it in your .env file.")
 
     body_html = markdown_to_html(body_markdown_or_text)
     send_email(

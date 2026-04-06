@@ -52,9 +52,7 @@ class OpenAIArticle(Base):
     content_richness = Column(
         String(20), nullable=False, default="missing", server_default="missing"
     )
-    content_source_type = Column(
-        String(20), nullable=False, default="rss", server_default="rss"
-    )
+    content_source_type = Column(String(20), nullable=False, default="rss", server_default="rss")
     digest_status = Column(
         String(20),
         nullable=False,

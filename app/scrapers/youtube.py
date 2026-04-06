@@ -88,9 +88,7 @@ class YouTubeScraper:
         for video in videos:
             transcript = self.get_transcript(video.video_id)
             result.append(
-                video.model_copy(
-                    update={"transcript": transcript.text if transcript else None}
-                )
+                video.model_copy(update={"transcript": transcript.text if transcript else None})
             )
         return result
 

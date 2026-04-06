@@ -31,9 +31,7 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.add_column(
-        "anthropic_articles", sa.Column("markdown_length", sa.Integer(), nullable=True)
-    )
+    op.add_column("anthropic_articles", sa.Column("markdown_length", sa.Integer(), nullable=True))
     op.add_column(
         "anthropic_articles",
         sa.Column("markdown_failure_reason", sa.String(length=100), nullable=True),
@@ -60,9 +58,7 @@ def upgrade() -> None:
         "anthropic_articles",
         sa.Column("digest_failure_reason", sa.String(length=100), nullable=True),
     )
-    op.add_column(
-        "openai_articles", sa.Column("content_length", sa.Integer(), nullable=True)
-    )
+    op.add_column("openai_articles", sa.Column("content_length", sa.Integer(), nullable=True))
     op.add_column(
         "openai_articles",
         sa.Column(
@@ -103,9 +99,7 @@ def upgrade() -> None:
             nullable=False,
         ),
     )
-    op.add_column(
-        "youtube_videos", sa.Column("transcript_length", sa.Integer(), nullable=True)
-    )
+    op.add_column("youtube_videos", sa.Column("transcript_length", sa.Integer(), nullable=True))
     op.add_column(
         "youtube_videos",
         sa.Column("transcript_failure_reason", sa.String(length=100), nullable=True),

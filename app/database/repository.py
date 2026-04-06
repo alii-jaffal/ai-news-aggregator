@@ -131,9 +131,7 @@ class Repository:
                     description=v.get("description", ""),
                     transcript=v.get("transcript"),
                     transcript_status="completed" if v.get("transcript") else "pending",
-                    transcript_length=len(v["transcript"])
-                    if v.get("transcript")
-                    else None,
+                    transcript_length=len(v["transcript"]) if v.get("transcript") else None,
                     transcript_failure_reason=None,
                     content_richness="full" if v.get("transcript") else "missing",
                     digest_status="pending",
@@ -173,9 +171,7 @@ class Repository:
                     published_at=a["published_at"],
                     description=a.get("description", ""),
                     category=a.get("category"),
-                    content_length=len(a.get("description", ""))
-                    if a.get("description")
-                    else None,
+                    content_length=len(a.get("description", "")) if a.get("description") else None,
                     content_richness="summary" if a.get("description") else "missing",
                     content_source_type="rss",
                     digest_status="pending",
@@ -283,9 +279,7 @@ class Repository:
     def get_youtube_videos_pending_transcript(
         self, limit: Optional[int] = None
     ) -> List[YouTubeVideo]:
-        query = self.session.query(YouTubeVideo).filter(
-            YouTubeVideo.transcript_status == "pending"
-        )
+        query = self.session.query(YouTubeVideo).filter(YouTubeVideo.transcript_status == "pending")
         if limit:
             query = query.limit(limit)
         return query.all()
@@ -330,9 +324,7 @@ class Repository:
         self.session.commit()
         return True
 
-    def get_articles_pending_digest(
-        self, limit: Optional[int] = None
-    ) -> List[Dict[str, Any]]:
+    def get_articles_pending_digest(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
         articles = []
 
         youtube_videos = (
@@ -405,9 +397,7 @@ class Repository:
             )
 
         articles.sort(
-            key=lambda item: (
-                item["published_at"] or datetime.min.replace(tzinfo=timezone.utc)
-            ),
+            key=lambda item: item["published_at"] or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
 
@@ -476,17 +466,11 @@ class Repository:
         record = None
 
         if article_type == "youtube":
-            record = (
-                self.session.query(YouTubeVideo).filter_by(video_id=article_id).first()
-            )
+            record = self.session.query(YouTubeVideo).filter_by(video_id=article_id).first()
         elif article_type == "openai":
-            record = (
-                self.session.query(OpenAIArticle).filter_by(guid=article_id).first()
-            )
+            record = self.session.query(OpenAIArticle).filter_by(guid=article_id).first()
         elif article_type == "anthropic":
-            record = (
-                self.session.query(AnthropicArticle).filter_by(guid=article_id).first()
-            )
+            record = self.session.query(AnthropicArticle).filter_by(guid=article_id).first()
 
         if not record:
             return False
@@ -496,23 +480,15 @@ class Repository:
         self.session.commit()
         return True
 
-    def mark_digest_failed(
-        self, article_type: str, article_id: str, reason: str
-    ) -> bool:
+    def mark_digest_failed(self, article_type: str, article_id: str, reason: str) -> bool:
         record = None
 
         if article_type == "youtube":
-            record = (
-                self.session.query(YouTubeVideo).filter_by(video_id=article_id).first()
-            )
+            record = self.session.query(YouTubeVideo).filter_by(video_id=article_id).first()
         elif article_type == "openai":
-            record = (
-                self.session.query(OpenAIArticle).filter_by(guid=article_id).first()
-            )
+            record = self.session.query(OpenAIArticle).filter_by(guid=article_id).first()
         elif article_type == "anthropic":
-            record = (
-                self.session.query(AnthropicArticle).filter_by(guid=article_id).first()
-            )
+            record = self.session.query(AnthropicArticle).filter_by(guid=article_id).first()
 
         if not record:
             return False

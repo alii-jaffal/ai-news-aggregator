@@ -25,9 +25,7 @@ def process_anthropic_markdown(limit: Optional[int] = None) -> dict:
                 repo.mark_anthropic_markdown_completed(article.guid, markdown)
                 processed += 1
             else:
-                repo.mark_anthropic_markdown_unavailable(
-                    article.guid, "no_markdown_extracted"
-                )
+                repo.mark_anthropic_markdown_unavailable(article.guid, "no_markdown_extracted")
                 unavailable += 1
 
         except Exception as e:

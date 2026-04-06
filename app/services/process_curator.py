@@ -33,9 +33,7 @@ def curate_digests(hours: int = 24) -> dict:
     for article in ranked_articles[:10]:
         digest = next((d for d in digests if d["id"] == article.digest_id), None)
         if digest:
-            logger.info(
-                f"Rank {article.rank} | Score: {article.relevance_score:.1f}/10.0"
-            )
+            logger.info(f"Rank {article.rank} | Score: {article.relevance_score:.1f}/10.0")
             logger.info(f"Title: {digest['title']}")
             logger.info(f"Type: {digest['article_type']}")
             logger.info(f"Reasoning: {article.reasoning}")

@@ -74,14 +74,10 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
             )
             results["success"] = True
         elif email_result.get("success") and not email_result.get("sent"):
-            logger.info(
-                "✓ Email step skipped: %s", email_result.get("reason", "no_send_needed")
-            )
+            logger.info("✓ Email step skipped: %s", email_result.get("reason", "no_send_needed"))
             results["success"] = True
         else:
-            logger.error(
-                "✗ Failed to send email: %s", email_result.get("error", "Unknown error")
-            )
+            logger.error("✗ Failed to send email: %s", email_result.get("error", "Unknown error"))
 
     except Exception as e:
         logger.exception("Pipeline failed")

@@ -10,9 +10,7 @@ from app.services.email_service import send_email, digest_to_html
 logger = logging.getLogger(__name__)
 
 
-def generate_email_digest(
-    hours: int = 24, top_n: int = 10
-) -> EmailDigestResponse | None:
+def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse | None:
     curator = CuratorAgent(USER_PROFILE)
     email_agent = EmailAgent(USER_PROFILE)
     repo = Repository()
@@ -61,9 +59,7 @@ def generate_email_digest(
         )
 
     if missing:
-        logger.warning(
-            "%s ranked items were not found in digest_map (ID mismatch?)", missing
-        )
+        logger.warning("%s ranked items were not found in digest_map (ID mismatch?)", missing)
 
     email_digest = email_agent.create_email_digest_response(
         ranked_articles=article_details,

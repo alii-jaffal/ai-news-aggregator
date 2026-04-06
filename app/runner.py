@@ -21,9 +21,7 @@ def run_scrapers(hours: int = 24) -> dict:
 
     for channel_id in YOUTUBE_CHANNELS:
         videos = youtube_scraper.get_latest_videos(channel_id, hours=hours)
-        logger.info(
-            "Scraped %s YouTube videos from channel %s", len(videos), channel_id
-        )
+        logger.info("Scraped %s YouTube videos from channel %s", len(videos), channel_id)
         youtube_videos.extend(videos)
         video_dicts.extend(
             [

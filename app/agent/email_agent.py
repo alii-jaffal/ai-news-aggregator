@@ -135,7 +135,9 @@ class EmailAgent:
             intro = EmailIntroduction(**data)
 
             if not intro.greeting.lower().startswith(f"hey {name}".lower()):
-                intro.greeting = f"Hey {name}, here is your daily digest of AI news for {current_date}."
+                intro.greeting = (
+                    f"Hey {name}, here is your daily digest of AI news for {current_date}."
+                )
 
             return intro
 
