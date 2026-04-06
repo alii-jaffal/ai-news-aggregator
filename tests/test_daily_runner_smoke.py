@@ -1,0 +1,58 @@
+from app import daily_runner
+
+
+def test_run_daily_pipeline_happy_path(monkeypatch):
+    monkeypatch.setattr(
+        daily_runner,
+        "run_scrapers",
+        lambda hours: {"youtube": [1], "openai": [1], "anthropic": [1]},
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "process_anthropic_markdown",
+        lambda: {"total": 1, "processed": 1, "unavailable": 0, "failed": 0},
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "process_youtube_transcripts",
+        lambda: {"total": 1, "processed": 1, "unavailable": 0, "failed": 0},
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "process_digests",
+        lambda: {"total": 2, "processed": 2, "failed": 0},
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "send_digest_email",
+        lambda hours, top_n: {
+            "success": True,
+            "sent": True,
+            "subject": "Daily AI News Digest - Today",
+            "articles_count": 2,
+        },
+    )
+
+    result = daily_runner.run_daily_pipeline(hours=24, top_n=10)
+
+    assert result["success"] is True
+    assert result["scraping"]["youtube"] == 1
+    assert result["digests"]["processed"] == 2
+
+
+def test_run_daily_pipeline_handles_stage_exception(monkeypatch):
+    monkeypatch.setattr(
+        daily_runner,
+        "run_scrapers",
+        lambda hours: {"youtube": [], "openai": [], "anthropic": []},
+    )
+
+    def boom():
+        raise RuntimeError("anthropic stage failed")
+
+    monkeypatch.setattr(daily_runner, "process_anthropic_markdown", boom)
+
+    result = daily_runner.run_daily_pipeline(hours=24, top_n=10)
+
+    assert result["success"] is False
+    assert "anthropic stage failed" in result["error"]
