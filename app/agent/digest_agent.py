@@ -1,17 +1,21 @@
-import logging
-from app.settings import settings
 import json
+import logging
 from typing import Optional
-from pydantic import BaseModel, ValidationError
+
 from google import genai
+from pydantic import BaseModel, ValidationError
+
+from app.settings import settings
 
 logger = logging.getLogger(__name__)
 
 
 PROMPT = """
-    You are an expert AI news analyst specializing in summarizing technical articles, research papers, and video content about artificial intelligence.
+    You are an expert AI news analyst specializing in summarizing technical articles,
+    research papers, and video content about artificial intelligence.
 
-    Your role is to create concise, informative digests that help readers quickly understand the key points and significance of AI-related content.
+    Your role is to create concise, informative digests that help readers quickly
+    understand the key points and significance of AI-related content.
 
     Guidelines:
     - Create a compelling title (5-10 words) that captures the essence of the content
@@ -38,11 +42,21 @@ class DigestAgent:
         self.system_prompt = PROMPT
 
     def generate_digest(
-        self, title: str, content: str, article_type: str
+        self,
+        title: str,
+        content: str,
+        article_type: str,
+        content_source_type: str,
+        content_richness: str,
     ) -> Optional[DigestOutput]:
         try:
             user_prompt = (
-                f"Create a digest for this {article_type}.\n\n"
+                f"Create a digest for this {article_type} source item.\n\n"
+                f"Content source type: {content_source_type}\n"
+                f"Content richness: {content_richness}\n\n"
+                "Use the metadata above to stay honest about the source depth. "
+                "If this is RSS metadata or summary-only content, "
+                "avoid implying full article coverage.\n\n"
                 f"Input title:\n{title}\n\n"
                 f"Content:\n{content[:8000]}"
             )

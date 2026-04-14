@@ -1,13 +1,48 @@
 from datetime import datetime, timedelta, timezone
-from typing import List, Optional, Dict, Any
+from typing import Any, Dict, List, Optional
+
 from sqlalchemy.orm import Session
-from .models import YouTubeVideo, OpenAIArticle, AnthropicArticle, Digest
+
+from app.content_normalization import (
+    NormalizedSourceItem,
+    clean_markdown_text,
+    clean_transcript_text,
+    select_normalized_content,
+)
+
 from .connection import get_session
+from .models import AnthropicArticle, Digest, OpenAIArticle, YouTubeVideo
 
 
 class Repository:
     def __init__(self, session: Optional[Session] = None):
         self.session = session or get_session()
+
+    @staticmethod
+    def _build_normalized_source_item(
+        *,
+        source_type: str,
+        source_id: str,
+        url: str,
+        raw_title: str,
+        raw_summary: str,
+        cleaned_content: str,
+        published_at: datetime,
+        content_richness: str,
+        content_source_type: str,
+    ) -> NormalizedSourceItem:
+        return NormalizedSourceItem(
+            source_type=source_type,
+            source_id=source_id,
+            url=url,
+            raw_title=raw_title,
+            raw_summary=raw_summary or "",
+            cleaned_content=cleaned_content,
+            published_at=published_at,
+            content_length=len(cleaned_content),
+            content_richness=content_richness,
+            content_source_type=content_source_type,
+        )
 
     def create_youtube_video(
         self,
@@ -23,6 +58,9 @@ class Repository:
         if existing:
             return None
 
+        normalized = select_normalized_content(description=description, transcript=transcript)
+        transcript_text = clean_transcript_text(transcript)
+
         video = YouTubeVideo(
             video_id=video_id,
             title=title,
@@ -31,10 +69,12 @@ class Repository:
             published_at=published_at,
             description=description,
             transcript=transcript,
+            cleaned_content=normalized.cleaned_content,
             transcript_status="completed" if transcript else "pending",
-            transcript_length=len(transcript) if transcript else None,
+            transcript_length=len(transcript_text) if transcript_text else None,
             transcript_failure_reason=None,
-            content_richness="full" if transcript else "missing",
+            content_richness=normalized.content_richness,
+            content_source_type=normalized.content_source_type,
             digest_status="pending",
             digest_failure_reason=None,
         )
@@ -55,16 +95,19 @@ class Repository:
         if existing:
             return None
 
+        normalized = select_normalized_content(description=description)
+
         article = OpenAIArticle(
             guid=guid,
             title=title,
             url=url,
             published_at=published_at,
             description=description,
+            cleaned_content=normalized.cleaned_content,
             category=category,
-            content_length=len(description) if description else None,
-            content_richness="summary" if description else "missing",
-            content_source_type="rss",
+            content_length=normalized.content_length,
+            content_richness=normalized.content_richness,
+            content_source_type=normalized.content_source_type,
             digest_status="pending",
             digest_failure_reason=None,
         )
@@ -85,17 +128,21 @@ class Repository:
         if existing:
             return None
 
+        normalized = select_normalized_content(description=description)
+
         article = AnthropicArticle(
             guid=guid,
             title=title,
             url=url,
             published_at=published_at,
             description=description,
+            cleaned_content=normalized.cleaned_content,
             category=category,
             markdown_status="pending",
             markdown_length=None,
             markdown_failure_reason=None,
-            content_richness="missing",
+            content_richness=normalized.content_richness,
+            content_source_type=normalized.content_source_type,
             digest_status="pending",
             digest_failure_reason=None,
         )
@@ -121,6 +168,12 @@ class Repository:
             if v["video_id"] in existing_ids:
                 continue
 
+            normalized = select_normalized_content(
+                description=v.get("description"),
+                transcript=v.get("transcript"),
+            )
+            transcript_text = clean_transcript_text(v.get("transcript"))
+
             new_videos.append(
                 YouTubeVideo(
                     video_id=v["video_id"],
@@ -130,10 +183,12 @@ class Repository:
                     published_at=v["published_at"],
                     description=v.get("description", ""),
                     transcript=v.get("transcript"),
+                    cleaned_content=normalized.cleaned_content,
                     transcript_status="completed" if v.get("transcript") else "pending",
-                    transcript_length=len(v["transcript"]) if v.get("transcript") else None,
+                    transcript_length=len(transcript_text) if transcript_text else None,
                     transcript_failure_reason=None,
-                    content_richness="full" if v.get("transcript") else "missing",
+                    content_richness=normalized.content_richness,
+                    content_source_type=normalized.content_source_type,
                     digest_status="pending",
                     digest_failure_reason=None,
                 )
@@ -163,6 +218,8 @@ class Repository:
             if a["guid"] in existing_ids:
                 continue
 
+            normalized = select_normalized_content(description=a.get("description"))
+
             new_articles.append(
                 OpenAIArticle(
                     guid=a["guid"],
@@ -170,10 +227,11 @@ class Repository:
                     url=a["url"],
                     published_at=a["published_at"],
                     description=a.get("description", ""),
+                    cleaned_content=normalized.cleaned_content,
                     category=a.get("category"),
-                    content_length=len(a.get("description", "")) if a.get("description") else None,
-                    content_richness="summary" if a.get("description") else "missing",
-                    content_source_type="rss",
+                    content_length=normalized.content_length,
+                    content_richness=normalized.content_richness,
+                    content_source_type=normalized.content_source_type,
                     digest_status="pending",
                     digest_failure_reason=None,
                 )
@@ -203,6 +261,8 @@ class Repository:
             if a["guid"] in existing_ids:
                 continue
 
+            normalized = select_normalized_content(description=a.get("description"))
+
             new_articles.append(
                 AnthropicArticle(
                     guid=a["guid"],
@@ -210,11 +270,13 @@ class Repository:
                     url=a["url"],
                     published_at=a["published_at"],
                     description=a.get("description", ""),
+                    cleaned_content=normalized.cleaned_content,
                     category=a.get("category"),
                     markdown_status="pending",
                     markdown_length=None,
                     markdown_failure_reason=None,
-                    content_richness="missing",
+                    content_richness=normalized.content_richness,
+                    content_source_type=normalized.content_source_type,
                     digest_status="pending",
                     digest_failure_reason=None,
                 )
@@ -241,11 +303,16 @@ class Repository:
         if not article:
             return False
 
+        normalized = select_normalized_content(description=article.description, markdown=markdown)
+        markdown_text = clean_markdown_text(markdown)
+
         article.markdown = markdown
+        article.cleaned_content = normalized.cleaned_content
         article.markdown_status = "completed"
-        article.markdown_length = len(markdown)
+        article.markdown_length = len(markdown_text) if markdown_text else None
         article.markdown_failure_reason = None
-        article.content_richness = "full"
+        article.content_richness = normalized.content_richness
+        article.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
 
@@ -256,11 +323,15 @@ class Repository:
         if not article:
             return False
 
+        normalized = select_normalized_content(description=article.description)
+
         article.markdown = None
+        article.cleaned_content = normalized.cleaned_content
         article.markdown_status = "unavailable"
         article.markdown_length = None
         article.markdown_failure_reason = reason
-        article.content_richness = "missing"
+        article.content_richness = normalized.content_richness
+        article.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
 
@@ -269,10 +340,14 @@ class Repository:
         if not article:
             return False
 
+        normalized = select_normalized_content(description=article.description)
+
+        article.cleaned_content = normalized.cleaned_content
         article.markdown_status = "failed"
         article.markdown_length = None
         article.markdown_failure_reason = reason
-        article.content_richness = "missing"
+        article.content_richness = normalized.content_richness
+        article.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
 
@@ -289,11 +364,16 @@ class Repository:
         if not video:
             return False
 
+        normalized = select_normalized_content(description=video.description, transcript=transcript)
+        transcript_text = clean_transcript_text(transcript)
+
         video.transcript = transcript
+        video.cleaned_content = normalized.cleaned_content
         video.transcript_status = "completed"
-        video.transcript_length = len(transcript)
+        video.transcript_length = len(transcript_text) if transcript_text else None
         video.transcript_failure_reason = None
-        video.content_richness = "full"
+        video.content_richness = normalized.content_richness
+        video.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
 
@@ -304,11 +384,15 @@ class Repository:
         if not video:
             return False
 
+        normalized = select_normalized_content(description=video.description)
+
         video.transcript = None
+        video.cleaned_content = normalized.cleaned_content
         video.transcript_status = "unavailable"
         video.transcript_length = None
         video.transcript_failure_reason = reason
-        video.content_richness = "missing"
+        video.content_richness = normalized.content_richness
+        video.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
 
@@ -317,87 +401,99 @@ class Repository:
         if not video:
             return False
 
+        normalized = select_normalized_content(description=video.description)
+
+        video.cleaned_content = normalized.cleaned_content
         video.transcript_status = "failed"
         video.transcript_length = None
         video.transcript_failure_reason = reason
-        video.content_richness = "missing"
+        video.content_richness = normalized.content_richness
+        video.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
 
-    def get_articles_pending_digest(self, limit: Optional[int] = None) -> List[Dict[str, Any]]:
-        articles = []
+    def get_articles_pending_digest(
+        self, limit: Optional[int] = None
+    ) -> List[NormalizedSourceItem]:
+        articles: List[NormalizedSourceItem] = []
 
         youtube_videos = (
             self.session.query(YouTubeVideo)
             .filter(
                 YouTubeVideo.digest_status == "pending",
-                YouTubeVideo.transcript_status == "completed",
+                YouTubeVideo.cleaned_content.isnot(None),
+                YouTubeVideo.cleaned_content != "",
             )
             .all()
         )
 
         for video in youtube_videos:
             articles.append(
-                {
-                    "type": "youtube",
-                    "id": video.video_id,
-                    "title": video.title,
-                    "url": video.url,
-                    "content": video.transcript or video.description or "",
-                    "published_at": video.published_at,
-                    "content_length": video.transcript_length,
-                    "content_richness": video.content_richness,
-                }
+                self._build_normalized_source_item(
+                    source_type="youtube",
+                    source_id=video.video_id,
+                    url=video.url,
+                    raw_title=video.title,
+                    raw_summary=video.description or "",
+                    cleaned_content=video.cleaned_content,
+                    published_at=video.published_at,
+                    content_richness=video.content_richness,
+                    content_source_type=video.content_source_type,
+                )
             )
 
         openai_articles = (
             self.session.query(OpenAIArticle)
             .filter(
                 OpenAIArticle.digest_status == "pending",
-                OpenAIArticle.content_richness != "missing",
+                OpenAIArticle.cleaned_content.isnot(None),
+                OpenAIArticle.cleaned_content != "",
             )
             .all()
         )
 
         for article in openai_articles:
             articles.append(
-                {
-                    "type": "openai",
-                    "id": article.guid,
-                    "title": article.title,
-                    "url": article.url,
-                    "content": article.description or "",
-                    "published_at": article.published_at,
-                    "content_length": article.content_length,
-                    "content_richness": article.content_richness,
-                }
+                self._build_normalized_source_item(
+                    source_type="openai",
+                    source_id=article.guid,
+                    url=article.url or "",
+                    raw_title=article.title,
+                    raw_summary=article.description or "",
+                    cleaned_content=article.cleaned_content,
+                    published_at=article.published_at,
+                    content_richness=article.content_richness,
+                    content_source_type=article.content_source_type,
+                )
             )
 
         anthropic_articles = (
             self.session.query(AnthropicArticle)
             .filter(
                 AnthropicArticle.digest_status == "pending",
-                AnthropicArticle.markdown_status == "completed",
+                AnthropicArticle.cleaned_content.isnot(None),
+                AnthropicArticle.cleaned_content != "",
             )
             .all()
         )
 
         for article in anthropic_articles:
             articles.append(
-                {
-                    "type": "anthropic",
-                    "id": article.guid,
-                    "title": article.title,
-                    "url": article.url,
-                    "content": article.markdown or article.description or "",
-                    "published_at": article.published_at,
-                    "content_length": article.markdown_length,
-                    "content_richness": article.content_richness,
-                }
+                self._build_normalized_source_item(
+                    source_type="anthropic",
+                    source_id=article.guid,
+                    url=article.url,
+                    raw_title=article.title,
+                    raw_summary=article.description or "",
+                    cleaned_content=article.cleaned_content,
+                    published_at=article.published_at,
+                    content_richness=article.content_richness,
+                    content_source_type=article.content_source_type,
+                )
             )
 
         articles.sort(
-            key=lambda item: item["published_at"] or datetime.min.replace(tzinfo=timezone.utc),
+            key=lambda item: item.published_at or datetime.min.replace(tzinfo=timezone.utc),
             reverse=True,
         )
 

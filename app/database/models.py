@@ -15,6 +15,7 @@ class YouTubeVideo(Base):
     published_at = Column(DateTime, nullable=False)
     description = Column(Text)
     transcript = Column(Text, nullable=True)
+    cleaned_content = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     transcript_status = Column(
         String(20),
@@ -27,6 +28,9 @@ class YouTubeVideo(Base):
     transcript_failure_reason = Column(String(100), nullable=True)
     content_richness = Column(
         String(20), nullable=False, default="missing", server_default="missing"
+    )
+    content_source_type = Column(
+        String(20), nullable=False, default="rss", server_default="rss"
     )
     digest_status = Column(
         String(20),
@@ -45,6 +49,7 @@ class OpenAIArticle(Base):
     title = Column(String, nullable=False)
     url = Column(String, nullable=True)
     description = Column(Text)
+    cleaned_content = Column(Text, nullable=True)
     published_at = Column(DateTime, nullable=False)
     category = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -73,6 +78,7 @@ class AnthropicArticle(Base):
     published_at = Column(DateTime, nullable=False)
     category = Column(String, nullable=True)
     markdown = Column(Text, nullable=True)
+    cleaned_content = Column(Text, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     markdown_status = Column(
         String(20),
@@ -85,6 +91,9 @@ class AnthropicArticle(Base):
     markdown_failure_reason = Column(String(100), nullable=True)
     content_richness = Column(
         String(20), nullable=False, default="missing", server_default="missing"
+    )
+    content_source_type = Column(
+        String(20), nullable=False, default="rss", server_default="rss"
     )
     digest_status = Column(
         String(20),

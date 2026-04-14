@@ -1,8 +1,8 @@
 import logging
 from typing import Optional
+
 from app.agent.digest_agent import DigestAgent
 from app.database.repository import Repository
-
 
 logger = logging.getLogger(__name__)
 
@@ -19,10 +19,10 @@ def process_digests(limit: Optional[int] = None) -> dict:
     logger.info(f"Starting digest processing for {total} articles")
 
     for idx, article in enumerate(articles, 1):
-        article_type = article["type"]
-        article_id = article["id"]
+        article_type = article.source_type
+        article_id = article.source_id
         article_title = (
-            article["title"][:60] + "..." if len(article["title"]) > 60 else article["title"]
+            article.raw_title[:60] + "..." if len(article.raw_title) > 60 else article.raw_title
         )
 
         logger.info(
@@ -31,19 +31,21 @@ def process_digests(limit: Optional[int] = None) -> dict:
 
         try:
             digest_result = agent.generate_digest(
-                title=article["title"],
-                content=article["content"],
+                title=article.raw_title,
+                content=article.cleaned_content,
                 article_type=article_type,
+                content_source_type=article.content_source_type,
+                content_richness=article.content_richness,
             )
 
             if digest_result:
                 repo.create_digest(
                     article_type=article_type,
                     article_id=article_id,
-                    url=article["url"],
+                    url=article.url,
                     title=digest_result.title,
                     summary=digest_result.summary,
-                    published_at=article.get("published_at"),
+                    published_at=article.published_at,
                 )
                 repo.mark_digest_completed(article_type, article_id)
                 processed += 1
