@@ -1,6 +1,7 @@
 from datetime import datetime, timedelta, timezone
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Sequence
 
+from sqlalchemy import tuple_
 from sqlalchemy.orm import Session
 
 from app.content_normalization import (
@@ -9,9 +10,17 @@ from app.content_normalization import (
     clean_transcript_text,
     select_normalized_content,
 )
+from app.story_clustering import RICHNESS_PRIORITY, SOURCE_TYPE_PRIORITY, build_source_key
 
 from .connection import get_session
-from .models import AnthropicArticle, Digest, OpenAIArticle, YouTubeVideo
+from .models import (
+    AnthropicArticle,
+    Digest,
+    OpenAIArticle,
+    Story,
+    StorySourceLink,
+    YouTubeVideo,
+)
 
 
 class Repository:
@@ -43,6 +52,118 @@ class Repository:
             content_richness=content_richness,
             content_source_type=content_source_type,
         )
+
+    @staticmethod
+    def _normalize_datetime(value: datetime) -> float:
+        if value.tzinfo is None:
+            value = value.replace(tzinfo=timezone.utc)
+        return value.timestamp()
+
+    @staticmethod
+    def _digest_selection_key(digest: Dict[str, Any], source_metadata: Dict[str, Any]) -> tuple:
+        published_at = source_metadata.get("published_at") or digest.get("created_at")
+        if published_at is None:
+            published_order = 0.0
+        else:
+            if published_at.tzinfo is None:
+                published_at = published_at.replace(tzinfo=timezone.utc)
+            published_order = published_at.timestamp()
+
+        return (
+            RICHNESS_PRIORITY.get(source_metadata.get("content_richness", "missing"), 0),
+            SOURCE_TYPE_PRIORITY.get(source_metadata.get("content_source_type", "rss"), 0),
+            published_order,
+            digest["id"],
+        )
+
+    def _collect_normalized_source_items(
+        self,
+        *,
+        hours: Optional[int] = None,
+        pending_digest_only: bool = False,
+    ) -> List[NormalizedSourceItem]:
+        articles: List[NormalizedSourceItem] = []
+        cutoff_time = None
+        if hours is not None:
+            cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+
+        youtube_query = self.session.query(YouTubeVideo).filter(
+            YouTubeVideo.cleaned_content.isnot(None),
+            YouTubeVideo.cleaned_content != "",
+        )
+        if pending_digest_only:
+            youtube_query = youtube_query.filter(YouTubeVideo.digest_status == "pending")
+        if cutoff_time is not None:
+            youtube_query = youtube_query.filter(YouTubeVideo.published_at >= cutoff_time)
+
+        for video in youtube_query.all():
+            articles.append(
+                self._build_normalized_source_item(
+                    source_type="youtube",
+                    source_id=video.video_id,
+                    url=video.url,
+                    raw_title=video.title,
+                    raw_summary=video.description or "",
+                    cleaned_content=video.cleaned_content,
+                    published_at=video.published_at,
+                    content_richness=video.content_richness,
+                    content_source_type=video.content_source_type,
+                )
+            )
+
+        openai_query = self.session.query(OpenAIArticle).filter(
+            OpenAIArticle.cleaned_content.isnot(None),
+            OpenAIArticle.cleaned_content != "",
+        )
+        if pending_digest_only:
+            openai_query = openai_query.filter(OpenAIArticle.digest_status == "pending")
+        if cutoff_time is not None:
+            openai_query = openai_query.filter(OpenAIArticle.published_at >= cutoff_time)
+
+        for article in openai_query.all():
+            articles.append(
+                self._build_normalized_source_item(
+                    source_type="openai",
+                    source_id=article.guid,
+                    url=article.url or "",
+                    raw_title=article.title,
+                    raw_summary=article.description or "",
+                    cleaned_content=article.cleaned_content,
+                    published_at=article.published_at,
+                    content_richness=article.content_richness,
+                    content_source_type=article.content_source_type,
+                )
+            )
+
+        anthropic_query = self.session.query(AnthropicArticle).filter(
+            AnthropicArticle.cleaned_content.isnot(None),
+            AnthropicArticle.cleaned_content != "",
+        )
+        if pending_digest_only:
+            anthropic_query = anthropic_query.filter(AnthropicArticle.digest_status == "pending")
+        if cutoff_time is not None:
+            anthropic_query = anthropic_query.filter(AnthropicArticle.published_at >= cutoff_time)
+
+        for article in anthropic_query.all():
+            articles.append(
+                self._build_normalized_source_item(
+                    source_type="anthropic",
+                    source_id=article.guid,
+                    url=article.url,
+                    raw_title=article.title,
+                    raw_summary=article.description or "",
+                    cleaned_content=article.cleaned_content,
+                    published_at=article.published_at,
+                    content_richness=article.content_richness,
+                    content_source_type=article.content_source_type,
+                )
+            )
+
+        articles.sort(
+            key=lambda item: self._normalize_datetime(item.published_at),
+            reverse=True,
+        )
+        return articles
 
     def create_youtube_video(
         self,
@@ -155,7 +276,6 @@ class Repository:
             return 0
 
         incoming_ids = {v["video_id"] for v in videos}
-
         existing_ids = {
             row[0]
             for row in self.session.query(YouTubeVideo.video_id)
@@ -164,27 +284,26 @@ class Repository:
         }
 
         new_videos = []
-        for v in videos:
-            if v["video_id"] in existing_ids:
+        for video_payload in videos:
+            if video_payload["video_id"] in existing_ids:
                 continue
 
             normalized = select_normalized_content(
-                description=v.get("description"),
-                transcript=v.get("transcript"),
+                description=video_payload.get("description"),
+                transcript=video_payload.get("transcript"),
             )
-            transcript_text = clean_transcript_text(v.get("transcript"))
-
+            transcript_text = clean_transcript_text(video_payload.get("transcript"))
             new_videos.append(
                 YouTubeVideo(
-                    video_id=v["video_id"],
-                    title=v["title"],
-                    url=v["url"],
-                    channel_id=v.get("channel_id", ""),
-                    published_at=v["published_at"],
-                    description=v.get("description", ""),
-                    transcript=v.get("transcript"),
+                    video_id=video_payload["video_id"],
+                    title=video_payload["title"],
+                    url=video_payload["url"],
+                    channel_id=video_payload.get("channel_id", ""),
+                    published_at=video_payload["published_at"],
+                    description=video_payload.get("description", ""),
+                    transcript=video_payload.get("transcript"),
                     cleaned_content=normalized.cleaned_content,
-                    transcript_status="completed" if v.get("transcript") else "pending",
+                    transcript_status="completed" if video_payload.get("transcript") else "pending",
                     transcript_length=len(transcript_text) if transcript_text else None,
                     transcript_failure_reason=None,
                     content_richness=normalized.content_richness,
@@ -205,7 +324,6 @@ class Repository:
             return 0
 
         incoming_ids = {a["guid"] for a in articles}
-
         existing_ids = {
             row[0]
             for row in self.session.query(OpenAIArticle.guid)
@@ -214,21 +332,20 @@ class Repository:
         }
 
         new_articles = []
-        for a in articles:
-            if a["guid"] in existing_ids:
+        for article_payload in articles:
+            if article_payload["guid"] in existing_ids:
                 continue
 
-            normalized = select_normalized_content(description=a.get("description"))
-
+            normalized = select_normalized_content(description=article_payload.get("description"))
             new_articles.append(
                 OpenAIArticle(
-                    guid=a["guid"],
-                    title=a["title"],
-                    url=a["url"],
-                    published_at=a["published_at"],
-                    description=a.get("description", ""),
+                    guid=article_payload["guid"],
+                    title=article_payload["title"],
+                    url=article_payload["url"],
+                    published_at=article_payload["published_at"],
+                    description=article_payload.get("description", ""),
                     cleaned_content=normalized.cleaned_content,
-                    category=a.get("category"),
+                    category=article_payload.get("category"),
                     content_length=normalized.content_length,
                     content_richness=normalized.content_richness,
                     content_source_type=normalized.content_source_type,
@@ -248,7 +365,6 @@ class Repository:
             return 0
 
         incoming_ids = {a["guid"] for a in articles}
-
         existing_ids = {
             row[0]
             for row in self.session.query(AnthropicArticle.guid)
@@ -257,21 +373,20 @@ class Repository:
         }
 
         new_articles = []
-        for a in articles:
-            if a["guid"] in existing_ids:
+        for article_payload in articles:
+            if article_payload["guid"] in existing_ids:
                 continue
 
-            normalized = select_normalized_content(description=a.get("description"))
-
+            normalized = select_normalized_content(description=article_payload.get("description"))
             new_articles.append(
                 AnthropicArticle(
-                    guid=a["guid"],
-                    title=a["title"],
-                    url=a["url"],
-                    published_at=a["published_at"],
-                    description=a.get("description", ""),
+                    guid=article_payload["guid"],
+                    title=article_payload["title"],
+                    url=article_payload["url"],
+                    published_at=article_payload["published_at"],
+                    description=article_payload.get("description", ""),
                     cleaned_content=normalized.cleaned_content,
-                    category=a.get("category"),
+                    category=article_payload.get("category"),
                     markdown_status="pending",
                     markdown_length=None,
                     markdown_failure_reason=None,
@@ -287,6 +402,9 @@ class Repository:
             self.session.commit()
 
         return len(new_articles)
+
+    def get_recent_normalized_source_items(self, hours: int) -> List[NormalizedSourceItem]:
+        return self._collect_normalized_source_items(hours=hours, pending_digest_only=False)
 
     def get_anthropic_articles_pending_markdown(
         self, limit: Optional[int] = None
@@ -415,91 +533,9 @@ class Repository:
     def get_articles_pending_digest(
         self, limit: Optional[int] = None
     ) -> List[NormalizedSourceItem]:
-        articles: List[NormalizedSourceItem] = []
-
-        youtube_videos = (
-            self.session.query(YouTubeVideo)
-            .filter(
-                YouTubeVideo.digest_status == "pending",
-                YouTubeVideo.cleaned_content.isnot(None),
-                YouTubeVideo.cleaned_content != "",
-            )
-            .all()
-        )
-
-        for video in youtube_videos:
-            articles.append(
-                self._build_normalized_source_item(
-                    source_type="youtube",
-                    source_id=video.video_id,
-                    url=video.url,
-                    raw_title=video.title,
-                    raw_summary=video.description or "",
-                    cleaned_content=video.cleaned_content,
-                    published_at=video.published_at,
-                    content_richness=video.content_richness,
-                    content_source_type=video.content_source_type,
-                )
-            )
-
-        openai_articles = (
-            self.session.query(OpenAIArticle)
-            .filter(
-                OpenAIArticle.digest_status == "pending",
-                OpenAIArticle.cleaned_content.isnot(None),
-                OpenAIArticle.cleaned_content != "",
-            )
-            .all()
-        )
-
-        for article in openai_articles:
-            articles.append(
-                self._build_normalized_source_item(
-                    source_type="openai",
-                    source_id=article.guid,
-                    url=article.url or "",
-                    raw_title=article.title,
-                    raw_summary=article.description or "",
-                    cleaned_content=article.cleaned_content,
-                    published_at=article.published_at,
-                    content_richness=article.content_richness,
-                    content_source_type=article.content_source_type,
-                )
-            )
-
-        anthropic_articles = (
-            self.session.query(AnthropicArticle)
-            .filter(
-                AnthropicArticle.digest_status == "pending",
-                AnthropicArticle.cleaned_content.isnot(None),
-                AnthropicArticle.cleaned_content != "",
-            )
-            .all()
-        )
-
-        for article in anthropic_articles:
-            articles.append(
-                self._build_normalized_source_item(
-                    source_type="anthropic",
-                    source_id=article.guid,
-                    url=article.url,
-                    raw_title=article.title,
-                    raw_summary=article.description or "",
-                    cleaned_content=article.cleaned_content,
-                    published_at=article.published_at,
-                    content_richness=article.content_richness,
-                    content_source_type=article.content_source_type,
-                )
-            )
-
-        articles.sort(
-            key=lambda item: item.published_at or datetime.min.replace(tzinfo=timezone.utc),
-            reverse=True,
-        )
-
+        articles = self._collect_normalized_source_items(pending_digest_only=True)
         if limit:
             articles = articles[:limit]
-
         return articles
 
     def create_digest(
@@ -511,7 +547,7 @@ class Repository:
         summary: str,
         published_at: Optional[datetime] = None,
     ) -> Optional[Digest]:
-        digest_id = f"{article_type}:{article_id}"
+        digest_id = build_source_key(article_type, article_id)
         existing = self.session.query(Digest).filter_by(id=digest_id).first()
         if existing:
             return None
@@ -547,16 +583,278 @@ class Repository:
 
         return [
             {
-                "id": d.id,
-                "article_type": d.article_type,
-                "article_id": d.article_id,
-                "url": d.url,
-                "title": d.title,
-                "summary": d.summary,
-                "created_at": d.created_at,
+                "id": digest.id,
+                "article_type": digest.article_type,
+                "article_id": digest.article_id,
+                "url": digest.url,
+                "title": digest.title,
+                "summary": digest.summary,
+                "created_at": digest.created_at,
             }
-            for d in digests
+            for digest in digests
         ]
+
+    def get_story_link_context(self, hours: int) -> Dict[str, Dict[str, Any]]:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        rows = (
+            self.session.query(StorySourceLink, Story)
+            .join(Story, Story.id == StorySourceLink.story_id)
+            .filter(StorySourceLink.published_at >= cutoff_time)
+            .all()
+        )
+
+        context: Dict[str, Dict[str, Any]] = {}
+        for link, story in rows:
+            context[build_source_key(link.source_type, link.source_id)] = {
+                "story_id": link.story_id,
+                "story_created_at": story.created_at,
+            }
+        return context
+
+    def upsert_story_clusters(self, story_payloads: Sequence[Dict[str, Any]]) -> Dict[str, int]:
+        if not story_payloads:
+            return {
+                "stories_created": 0,
+                "stories_updated": 0,
+                "links_created": 0,
+                "links_updated": 0,
+            }
+
+        flattened_links = [
+            {**link, "story_id": payload["story_id"]}
+            for payload in story_payloads
+            for link in payload["links"]
+        ]
+        source_refs = [(link["source_type"], link["source_id"]) for link in flattened_links]
+
+        existing_links: List[StorySourceLink] = []
+        if source_refs:
+            existing_links = (
+                self.session.query(StorySourceLink)
+                .filter(
+                    tuple_(
+                        StorySourceLink.source_type,
+                        StorySourceLink.source_id,
+                    ).in_(source_refs)
+                )
+                .all()
+            )
+
+        existing_links_by_key = {
+            build_source_key(link.source_type, link.source_id): link for link in existing_links
+        }
+        orphan_candidate_story_ids = {link.story_id for link in existing_links}
+
+        for link in existing_links:
+            self.session.delete(link)
+        if existing_links:
+            self.session.flush()
+
+        story_ids = [payload["story_id"] for payload in story_payloads]
+        existing_stories = {
+            story.id: story
+            for story in self.session.query(Story).filter(Story.id.in_(story_ids)).all()
+        }
+
+        stories_created = 0
+        stories_updated = 0
+        for payload in story_payloads:
+            story = existing_stories.get(payload["story_id"])
+            if story is None:
+                story = Story(id=payload["story_id"])
+                self.session.add(story)
+                stories_created += 1
+            else:
+                stories_updated += 1
+
+            story.title = payload["title"]
+            story.representative_source_type = payload["representative_source_type"]
+            story.representative_source_id = payload["representative_source_id"]
+            story.representative_published_at = payload["representative_published_at"]
+            story.cluster_version = payload["cluster_version"]
+            story.window_start = payload["window_start"]
+            story.window_end = payload["window_end"]
+
+        links_created = 0
+        links_updated = 0
+        for payload in story_payloads:
+            for link_payload in payload["links"]:
+                source_key = build_source_key(
+                    link_payload["source_type"],
+                    link_payload["source_id"],
+                )
+                if source_key in existing_links_by_key:
+                    links_updated += 1
+                else:
+                    links_created += 1
+
+                self.session.add(
+                    StorySourceLink(
+                        story_id=payload["story_id"],
+                        source_type=link_payload["source_type"],
+                        source_id=link_payload["source_id"],
+                        published_at=link_payload["published_at"],
+                        similarity_to_primary=link_payload["similarity_to_primary"],
+                        is_primary=link_payload["is_primary"],
+                    )
+                )
+
+        self.session.flush()
+
+        for story_id in set(story_ids):
+            story = self.session.query(Story).filter_by(id=story_id).first()
+            if story is not None:
+                story.source_count = (
+                    self.session.query(StorySourceLink)
+                    .filter(StorySourceLink.story_id == story_id)
+                    .count()
+                )
+
+        self.session.commit()
+
+        remaining_links_by_story = {
+            row[0]
+            for row in self.session.query(StorySourceLink.story_id)
+            .filter(StorySourceLink.story_id.in_(orphan_candidate_story_ids))
+            .all()
+        }
+        orphan_story_ids = orphan_candidate_story_ids - remaining_links_by_story
+        if orphan_story_ids:
+            (
+                self.session.query(Story)
+                .filter(Story.id.in_(orphan_story_ids))
+                .delete(synchronize_session=False)
+            )
+            self.session.commit()
+
+        return {
+            "stories_created": stories_created,
+            "stories_updated": stories_updated,
+            "links_created": links_created,
+            "links_updated": links_updated,
+        }
+
+    def _get_story_links_for_source_refs(
+        self,
+        source_refs: Sequence[tuple[str, str]],
+    ) -> Dict[str, StorySourceLink]:
+        if not source_refs:
+            return {}
+
+        links = (
+            self.session.query(StorySourceLink)
+            .filter(tuple_(StorySourceLink.source_type, StorySourceLink.source_id).in_(source_refs))
+            .all()
+        )
+        return {build_source_key(link.source_type, link.source_id): link for link in links}
+
+    def _get_source_metadata_map(
+        self,
+        source_refs: Sequence[tuple[str, str]],
+    ) -> Dict[str, Dict[str, Any]]:
+        metadata: Dict[str, Dict[str, Any]] = {}
+        refs_by_type: Dict[str, List[str]] = {"youtube": [], "openai": [], "anthropic": []}
+        for source_type, source_id in source_refs:
+            refs_by_type.setdefault(source_type, []).append(source_id)
+
+        if refs_by_type["youtube"]:
+            for video in (
+                self.session.query(YouTubeVideo)
+                .filter(YouTubeVideo.video_id.in_(refs_by_type["youtube"]))
+                .all()
+            ):
+                metadata[build_source_key("youtube", video.video_id)] = {
+                    "content_richness": video.content_richness,
+                    "content_source_type": video.content_source_type,
+                    "published_at": video.published_at,
+                }
+
+        if refs_by_type["openai"]:
+            for article in (
+                self.session.query(OpenAIArticle)
+                .filter(OpenAIArticle.guid.in_(refs_by_type["openai"]))
+                .all()
+            ):
+                metadata[build_source_key("openai", article.guid)] = {
+                    "content_richness": article.content_richness,
+                    "content_source_type": article.content_source_type,
+                    "published_at": article.published_at,
+                }
+
+        if refs_by_type["anthropic"]:
+            for article in (
+                self.session.query(AnthropicArticle)
+                .filter(AnthropicArticle.guid.in_(refs_by_type["anthropic"]))
+                .all()
+            ):
+                metadata[build_source_key("anthropic", article.guid)] = {
+                    "content_richness": article.content_richness,
+                    "content_source_type": article.content_source_type,
+                    "published_at": article.published_at,
+                }
+
+        return metadata
+
+    def get_recent_story_digests(self, hours: int = 24) -> List[Dict[str, Any]]:
+        recent_digests = self.get_recent_digests(hours=hours)
+        if not recent_digests:
+            return []
+
+        source_refs = [(digest["article_type"], digest["article_id"]) for digest in recent_digests]
+        story_link_map = self._get_story_links_for_source_refs(source_refs)
+        story_ids = {link.story_id for link in story_link_map.values()}
+        story_map = {
+            story.id: story
+            for story in self.session.query(Story).filter(Story.id.in_(story_ids)).all()
+        }
+        source_metadata = self._get_source_metadata_map(source_refs)
+
+        grouped_digests: Dict[str, List[Dict[str, Any]]] = {}
+        for digest in recent_digests:
+            source_key = build_source_key(digest["article_type"], digest["article_id"])
+            link = story_link_map.get(source_key)
+            group_key = link.story_id if link else digest["id"]
+            grouped_digests.setdefault(group_key, []).append(digest)
+
+        collapsed_digests: List[Dict[str, Any]] = []
+        for group_key, digests in grouped_digests.items():
+            if group_key in story_map:
+                story = story_map[group_key]
+                representative_digest_id = build_source_key(
+                    story.representative_source_type,
+                    story.representative_source_id,
+                )
+                digest_by_id = {digest["id"]: digest for digest in digests}
+                selected_digest = digest_by_id.get(representative_digest_id)
+                if selected_digest is None:
+                    selected_digest = max(
+                        digests,
+                        key=lambda digest: self._digest_selection_key(
+                            digest,
+                            source_metadata.get(digest["id"], {}),
+                        ),
+                    )
+                collapsed_digests.append(
+                    {
+                        **selected_digest,
+                        "story_id": story.id,
+                        "story_source_count": story.source_count,
+                    }
+                )
+            else:
+                collapsed_digests.append(
+                    {
+                        **digests[0],
+                        "story_id": None,
+                        "story_source_count": 1,
+                    }
+                )
+
+        collapsed_digests.sort(
+            key=lambda digest: self._normalize_datetime(digest["created_at"]),
+            reverse=True,
+        )
+        return collapsed_digests
 
     def mark_digest_completed(self, article_type: str, article_id: str) -> bool:
         record = None

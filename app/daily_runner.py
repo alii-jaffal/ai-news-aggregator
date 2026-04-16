@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime
+
 from app.runner import run_scrapers
 from app.services.process_anthropic import process_anthropic_markdown
-from app.services.process_youtube import process_youtube_transcripts
 from app.services.process_digest import process_digests
 from app.services.process_email import send_digest_email
-
+from app.services.process_story_clusters import process_story_clusters
+from app.services.process_youtube import process_youtube_transcripts
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
     }
 
     try:
-        logger.info("[1/5] Scraping articles from sources...")
+        logger.info("[1/6] Scraping articles from sources...")
         scraping_results = run_scrapers(hours=hours)
         results["scraping"] = {
             "youtube": len(scraping_results.get("youtube", [])),
@@ -34,54 +35,72 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
             "anthropic": len(scraping_results.get("anthropic", [])),
         }
         logger.info(
-            f"✓ Scraped {results['scraping']['youtube']} YouTube videos, "
-            f"{results['scraping']['openai']} OpenAI articles, "
-            f"{results['scraping']['anthropic']} Anthropic articles"
+            "Scraped %s YouTube videos, %s OpenAI articles, %s Anthropic articles",
+            results["scraping"]["youtube"],
+            results["scraping"]["openai"],
+            results["scraping"]["anthropic"],
         )
 
-        logger.info("[2/5] Processing Anthropic markdown...")
+        logger.info("[2/6] Processing Anthropic markdown...")
         anthropic_result = process_anthropic_markdown()
         results["processing"]["anthropic"] = anthropic_result
         logger.info(
-            f"✓ Processed {anthropic_result['processed']} Anthropic articles "
-            f"({anthropic_result['unavailable']} unavailable, {anthropic_result['failed']} failed)"
+            "Processed %s Anthropic articles (%s unavailable, %s failed)",
+            anthropic_result["processed"],
+            anthropic_result["unavailable"],
+            anthropic_result["failed"],
         )
 
-        logger.info("[3/5] Processing YouTube transcripts...")
+        logger.info("[3/6] Processing YouTube transcripts...")
         youtube_result = process_youtube_transcripts()
         results["processing"]["youtube"] = youtube_result
         logger.info(
-            f"✓ Processed {youtube_result['processed']} transcripts "
-            f"({youtube_result['unavailable']} unavailable)"
+            "Processed %s transcripts (%s unavailable, %s failed)",
+            youtube_result["processed"],
+            youtube_result["unavailable"],
+            youtube_result["failed"],
         )
 
-        logger.info("[4/5] Creating digests for articles...")
+        logger.info("[4/6] Clustering source items into stories...")
+        story_result = process_story_clusters(hours=hours)
+        results["processing"]["stories"] = story_result
+        logger.info(
+            "Clustered %s items into %s stories (%s multi-item, %s singleton)",
+            story_result["items_considered"],
+            story_result["stories"],
+            story_result["multi_item_stories"],
+            story_result["singleton_stories"],
+        )
+
+        logger.info("[5/6] Creating digests for articles...")
         digest_result = process_digests()
         results["digests"] = digest_result
         logger.info(
-            f"✓ Created {digest_result['processed']} digests "
-            f"({digest_result['failed']} failed out of {digest_result['total']} total)"
+            "Created %s digests (%s failed out of %s total)",
+            digest_result["processed"],
+            digest_result["failed"],
+            digest_result["total"],
         )
 
-        logger.info("[5/5] Generating and sending email digest...")
+        logger.info("[6/6] Generating and sending email digest...")
         email_result = send_digest_email(hours=hours, top_n=top_n)
         results["email"] = email_result
 
         if email_result.get("success") and email_result.get("sent"):
             logger.info(
-                "✓ Email sent successfully with %s articles",
+                "Email sent successfully with %s articles",
                 email_result["articles_count"],
             )
             results["success"] = True
         elif email_result.get("success") and not email_result.get("sent"):
-            logger.info("✓ Email step skipped: %s", email_result.get("reason", "no_send_needed"))
+            logger.info("Email step skipped: %s", email_result.get("reason", "no_send_needed"))
             results["success"] = True
         else:
-            logger.error("✗ Failed to send email: %s", email_result.get("error", "Unknown error"))
+            logger.error("Failed to send email: %s", email_result.get("error", "Unknown error"))
 
-    except Exception as e:
+    except Exception as exc:
         logger.exception("Pipeline failed")
-        results["error"] = str(e)
+        results["error"] = str(exc)
 
     end_time = datetime.now()
     duration = (end_time - start_time).total_seconds()
@@ -91,13 +110,12 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
     logger.info("=" * 60)
     logger.info("Pipeline Summary")
     logger.info("=" * 60)
-    logger.info(f"Duration: {duration:.1f} seconds")
-    logger.info(f"Scraped: {results['scraping']}")
-    logger.info(f"Processed: {results['processing']}")
-    logger.info(f"Digests: {results['digests']}")
+    logger.info("Duration: %.1f seconds", duration)
+    logger.info("Scraped: %s", results["scraping"])
+    logger.info("Processed: %s", results["processing"])
+    logger.info("Digests: %s", results["digests"])
 
     email_result = results.get("email", {})
-
     if email_result.get("success") and email_result.get("sent"):
         email_status = "Sent"
     elif email_result.get("success") and not email_result.get("sent"):
@@ -105,8 +123,7 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
     else:
         email_status = "Failed"
 
-    logger.info(f"Email: {email_status}")
-
+    logger.info("Email: %s", email_status)
     logger.info("=" * 60)
 
     return results
@@ -114,4 +131,4 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
 
 if __name__ == "__main__":
     result = run_daily_pipeline(hours=24, top_n=10)
-    exit(0 if result["success"] else 1)
+    raise SystemExit(0 if result["success"] else 1)

@@ -4,12 +4,12 @@ from app.services import process_email
 
 
 class FakeRepositoryNoDigests:
-    def get_recent_digests(self, hours=24):
+    def get_recent_story_digests(self, hours=24):
         return []
 
 
 class FakeRepositoryWithDigests:
-    def get_recent_digests(self, hours=24):
+    def get_recent_story_digests(self, hours=24):
         return [
             {
                 "id": "openai:1",
@@ -19,6 +19,8 @@ class FakeRepositoryWithDigests:
                 "title": "OpenAI Story",
                 "summary": "Summary text",
                 "created_at": None,
+                "story_id": "story-1",
+                "story_source_count": 1,
             }
         ]
 

@@ -1,11 +1,11 @@
 import logging
 from typing import List
-from app.agent.email_agent import EmailAgent, RankedArticleDetail, EmailDigestResponse
-from app.agent.curator_agent import CuratorAgent
-from app.profiles.user_profile import USER_PROFILE
-from app.database.repository import Repository
-from app.services.email_service import send_email, digest_to_html
 
+from app.agent.curator_agent import CuratorAgent
+from app.agent.email_agent import EmailAgent, EmailDigestResponse, RankedArticleDetail
+from app.database.repository import Repository
+from app.profiles.user_profile import USER_PROFILE
+from app.services.email_service import digest_to_html, send_email
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +15,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     email_agent = EmailAgent(USER_PROFILE)
     repo = Repository()
 
-    digests = repo.get_recent_digests(hours=hours)
+    digests = repo.get_recent_story_digests(hours=hours)
     if not digests:
         logger.info(
             "No digests found from the last %s hours while generating email digest.",

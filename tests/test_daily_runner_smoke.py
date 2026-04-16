@@ -19,6 +19,21 @@ def test_run_daily_pipeline_happy_path(monkeypatch):
     )
     monkeypatch.setattr(
         daily_runner,
+        "process_story_clusters",
+        lambda hours: {
+            "window_hours": 72,
+            "items_considered": 2,
+            "stories": 1,
+            "multi_item_stories": 1,
+            "singleton_stories": 0,
+            "links_created": 2,
+            "links_updated": 0,
+            "stories_created": 1,
+            "stories_updated": 0,
+        },
+    )
+    monkeypatch.setattr(
+        daily_runner,
         "process_digests",
         lambda: {"total": 2, "processed": 2, "failed": 0},
     )
@@ -37,6 +52,7 @@ def test_run_daily_pipeline_happy_path(monkeypatch):
 
     assert result["success"] is True
     assert result["scraping"]["youtube"] == 1
+    assert result["processing"]["stories"]["stories"] == 1
     assert result["digests"]["processed"] == 2
 
 

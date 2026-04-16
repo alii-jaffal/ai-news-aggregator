@@ -1,6 +1,6 @@
 from pathlib import Path
-from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
 
@@ -21,6 +21,8 @@ class Settings(BaseSettings):
     DIGEST_GEMINI_API_KEY: str
     CURATOR_GEMINI_API_KEY: str
     EMAIL_GEMINI_API_KEY: str
+    STORY_CLUSTER_WINDOW_HOURS: int = 72
+    STORY_EMBEDDING_MODEL: str = "gemini-embedding-001"
 
     EMAIL: str
     APP_PASSWORD: str

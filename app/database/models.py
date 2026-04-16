@@ -1,4 +1,14 @@
-from sqlalchemy import Column, DateTime, Integer, String, Text
+from sqlalchemy import (
+    Boolean,
+    Column,
+    DateTime,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    Text,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import declarative_base
 from sqlalchemy.sql import func
 
@@ -114,4 +124,57 @@ class Digest(Base):
     url = Column(String, nullable=False)
     title = Column(String, nullable=False)
     summary = Column(Text, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+
+class Story(Base):
+    __tablename__ = "stories"
+
+    id = Column(String, primary_key=True)
+    title = Column(String, nullable=False)
+    representative_source_type = Column(String(20), nullable=False)
+    representative_source_id = Column(String, nullable=False)
+    representative_published_at = Column(DateTime, nullable=False)
+    source_count = Column(Integer, nullable=False, default=1, server_default="1")
+    cluster_version = Column(String(50), nullable=False)
+    window_start = Column(DateTime, nullable=False)
+    window_end = Column(DateTime, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class StorySourceLink(Base):
+    __tablename__ = "story_source_links"
+    __table_args__ = (
+        UniqueConstraint("source_type", "source_id", name="uq_story_source_links_source_ref"),
+        UniqueConstraint(
+            "story_id",
+            "source_type",
+            "source_id",
+            name="uq_story_source_links_story_source_ref",
+        ),
+    )
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    story_id = Column(
+        String,
+        ForeignKey("stories.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    source_type = Column(String(20), nullable=False)
+    source_id = Column(String, nullable=False)
+    published_at = Column(DateTime, nullable=False, index=True)
+    similarity_to_primary = Column(Float, nullable=True)
+    is_primary = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
