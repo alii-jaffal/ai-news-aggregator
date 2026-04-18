@@ -3,9 +3,9 @@ from datetime import datetime
 
 from app.runner import run_scrapers
 from app.services.process_anthropic import process_anthropic_markdown
-from app.services.process_digest import process_digests
 from app.services.process_email import send_digest_email
 from app.services.process_story_clusters import process_story_clusters
+from app.services.process_story_digests import process_story_digests
 from app.services.process_youtube import process_youtube_transcripts
 
 logger = logging.getLogger(__name__)
@@ -72,13 +72,14 @@ def run_daily_pipeline(hours: int = 24, top_n: int = 10) -> dict:
             story_result["singleton_stories"],
         )
 
-        logger.info("[5/6] Creating digests for articles...")
-        digest_result = process_digests()
+        logger.info("[5/6] Creating canonical story digests...")
+        digest_result = process_story_digests()
         results["digests"] = digest_result
         logger.info(
-            "Created %s digests (%s failed out of %s total)",
+            "Created %s story digests (%s failed, %s fallback out of %s total)",
             digest_result["processed"],
             digest_result["failed"],
+            digest_result["fallback_used"],
             digest_result["total"],
         )
 

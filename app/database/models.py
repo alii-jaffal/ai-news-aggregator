@@ -139,6 +139,40 @@ class Story(Base):
     cluster_version = Column(String(50), nullable=False)
     window_start = Column(DateTime, nullable=False)
     window_end = Column(DateTime, nullable=False)
+    story_digest_status = Column(
+        String(20),
+        nullable=False,
+        default="pending",
+        server_default="pending",
+        index=True,
+    )
+    story_digest_failure_reason = Column(String(100), nullable=True)
+    story_digest_input_hash = Column(String(64), nullable=True)
+    story_digest_last_processed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class StoryDigest(Base):
+    __tablename__ = "story_digests"
+
+    story_id = Column(
+        String,
+        ForeignKey("stories.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+    title = Column(String, nullable=False)
+    summary = Column(Text, nullable=False)
+    why_it_matters = Column(Text, nullable=False)
+    disagreement_notes = Column(Text, nullable=True)
+    synthesis_mode = Column(String(30), nullable=False)
+    available_source_count = Column(Integer, nullable=False)
+    used_source_count = Column(Integer, nullable=False)
+    generated_input_hash = Column(String(64), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),

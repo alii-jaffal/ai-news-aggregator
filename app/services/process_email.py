@@ -15,7 +15,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     email_agent = EmailAgent(USER_PROFILE)
     repo = Repository()
 
-    digests = repo.get_recent_story_digests(hours=hours)
+    digests = repo.get_recent_story_digest_candidates(hours=hours)
     if not digests:
         logger.info(
             "No digests found from the last %s hours while generating email digest.",
@@ -55,6 +55,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
                 summary=d.get("summary", ""),
                 url=d.get("url", ""),
                 article_type=d.get("article_type", ""),
+                source_attribution_line=d.get("source_attribution_line"),
             )
         )
 

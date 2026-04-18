@@ -34,8 +34,14 @@ def test_run_daily_pipeline_happy_path(monkeypatch):
     )
     monkeypatch.setattr(
         daily_runner,
-        "process_digests",
-        lambda: {"total": 2, "processed": 2, "failed": 0},
+        "process_story_digests",
+        lambda: {
+            "total": 2,
+            "processed": 2,
+            "failed": 0,
+            "fallback_used": 0,
+            "kept_existing": 0,
+        },
     )
     monkeypatch.setattr(
         daily_runner,

@@ -4,23 +4,26 @@ from app.services import process_email
 
 
 class FakeRepositoryNoDigests:
-    def get_recent_story_digests(self, hours=24):
+    def get_recent_story_digest_candidates(self, hours=24):
         return []
 
 
 class FakeRepositoryWithDigests:
-    def get_recent_story_digests(self, hours=24):
+    def get_recent_story_digest_candidates(self, hours=24):
         return [
             {
-                "id": "openai:1",
-                "article_type": "openai",
-                "article_id": "1",
-                "url": "https://openai.com/1",
-                "title": "OpenAI Story",
-                "summary": "Summary text",
-                "created_at": None,
+                "id": "story:story-1",
                 "story_id": "story-1",
+                "article_type": "story",
+                "url": "https://openai.com/1",
+                "title": "OpenAI Story Digest",
+                "summary": "Summary text",
+                "why_it_matters": "Why it matters text",
+                "created_at": None,
                 "story_source_count": 1,
+                "source_types": ["openai"],
+                "synthesis_mode": "single_source",
+                "source_attribution_line": "Source: OpenAI",
             }
         ]
 
@@ -32,7 +35,7 @@ class FakeCuratorAgentSuccess:
     def rank_digests(self, digests):
         return [
             RankedArticle(
-                digest_id="openai:1",
+                digest_id="story:story-1",
                 relevance_score=9.5,
                 rank=1,
                 reasoning="Highly relevant",
@@ -60,14 +63,15 @@ class FakeEmailAgent:
             ),
             articles=[
                 RankedArticleDetail(
-                    digest_id="openai:1",
+                    digest_id="story:story-1",
                     rank=1,
                     relevance_score=9.5,
-                    title="OpenAI Story",
+                    title="OpenAI Story Digest",
                     summary="Summary text",
                     url="https://openai.com/1",
-                    article_type="openai",
+                    article_type="story",
                     reasoning="Highly relevant",
+                    source_attribution_line="Source: OpenAI",
                 )
             ],
             total_ranked=1,
@@ -114,7 +118,8 @@ def test_send_digest_email_happy_path(monkeypatch):
     def fake_send_email(subject, body_text, body_html=None, recipients=None):
         sent["called"] = True
         assert "Daily AI News Digest" in subject
-        assert "OpenAI Story" in body_text
+        assert "OpenAI Story Digest" in body_text
+        assert "Source: OpenAI" in body_text
         assert body_html is not None
 
     monkeypatch.setattr(process_email, "Repository", lambda: FakeRepositoryWithDigests())

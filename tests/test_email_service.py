@@ -25,8 +25,9 @@ def test_digest_to_html_renders_email_digest_response():
                 title="OpenAI Story",
                 summary="A useful summary.",
                 url="https://openai.com/story",
-                article_type="openai",
+                article_type="story",
                 reasoning="Very relevant",
+                source_attribution_line="Source: OpenAI",
             )
         ],
         total_ranked=1,
@@ -38,6 +39,7 @@ def test_digest_to_html_renders_email_digest_response():
     assert "Hey Ali, here is your digest." in html
     assert "OpenAI Story" in html
     assert "A useful summary." in html
+    assert "Source: OpenAI" in html
     assert "https://openai.com/story" in html
 
 

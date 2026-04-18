@@ -53,6 +53,8 @@ def test_process_story_clusters_persists_and_reuses_story_ids(db_session):
     assert first_result["multi_item_stories"] == 1
     assert story.representative_source_type == "youtube"
     assert story.representative_source_id == "yt-1"
+    assert story.story_digest_status == "pending"
+    assert story.story_digest_input_hash is not None
     assert db_session.query(StorySourceLink).count() == 2
 
     story_id = story.id
