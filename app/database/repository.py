@@ -10,7 +10,7 @@ from app.content_normalization import (
     clean_transcript_text,
     select_normalized_content,
 )
-from app.story_clustering import RICHNESS_PRIORITY, SOURCE_TYPE_PRIORITY, build_source_key
+from app.story_clustering import build_source_key
 from app.story_digesting import (
     StoryDigestJob,
     StoryDigestSource,
@@ -21,7 +21,6 @@ from app.story_digesting import (
 from .connection import get_session
 from .models import (
     AnthropicArticle,
-    Digest,
     OpenAIArticle,
     Story,
     StoryDigest,
@@ -93,28 +92,10 @@ class Repository:
             value = value.replace(tzinfo=timezone.utc)
         return value.timestamp()
 
-    @staticmethod
-    def _digest_selection_key(digest: Dict[str, Any], source_metadata: Dict[str, Any]) -> tuple:
-        published_at = source_metadata.get("published_at") or digest.get("created_at")
-        if published_at is None:
-            published_order = 0.0
-        else:
-            if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=timezone.utc)
-            published_order = published_at.timestamp()
-
-        return (
-            RICHNESS_PRIORITY.get(source_metadata.get("content_richness", "missing"), 0),
-            SOURCE_TYPE_PRIORITY.get(source_metadata.get("content_source_type", "rss"), 0),
-            published_order,
-            digest["id"],
-        )
-
     def _collect_normalized_source_items(
         self,
         *,
         hours: Optional[int] = None,
-        pending_digest_only: bool = False,
     ) -> List[NormalizedSourceItem]:
         articles: List[NormalizedSourceItem] = []
         cutoff_time = None
@@ -125,8 +106,6 @@ class Repository:
             YouTubeVideo.cleaned_content.isnot(None),
             YouTubeVideo.cleaned_content != "",
         )
-        if pending_digest_only:
-            youtube_query = youtube_query.filter(YouTubeVideo.digest_status == "pending")
         if cutoff_time is not None:
             youtube_query = youtube_query.filter(YouTubeVideo.published_at >= cutoff_time)
 
@@ -149,8 +128,6 @@ class Repository:
             OpenAIArticle.cleaned_content.isnot(None),
             OpenAIArticle.cleaned_content != "",
         )
-        if pending_digest_only:
-            openai_query = openai_query.filter(OpenAIArticle.digest_status == "pending")
         if cutoff_time is not None:
             openai_query = openai_query.filter(OpenAIArticle.published_at >= cutoff_time)
 
@@ -173,8 +150,6 @@ class Repository:
             AnthropicArticle.cleaned_content.isnot(None),
             AnthropicArticle.cleaned_content != "",
         )
-        if pending_digest_only:
-            anthropic_query = anthropic_query.filter(AnthropicArticle.digest_status == "pending")
         if cutoff_time is not None:
             anthropic_query = anthropic_query.filter(AnthropicArticle.published_at >= cutoff_time)
 
@@ -230,8 +205,6 @@ class Repository:
             transcript_failure_reason=None,
             content_richness=normalized.content_richness,
             content_source_type=normalized.content_source_type,
-            digest_status="pending",
-            digest_failure_reason=None,
         )
         self.session.add(video)
         self.session.commit()
@@ -263,8 +236,6 @@ class Repository:
             content_length=normalized.content_length,
             content_richness=normalized.content_richness,
             content_source_type=normalized.content_source_type,
-            digest_status="pending",
-            digest_failure_reason=None,
         )
         self.session.add(article)
         self.session.commit()
@@ -298,8 +269,6 @@ class Repository:
             markdown_failure_reason=None,
             content_richness=normalized.content_richness,
             content_source_type=normalized.content_source_type,
-            digest_status="pending",
-            digest_failure_reason=None,
         )
         self.session.add(article)
         self.session.commit()
@@ -342,8 +311,6 @@ class Repository:
                     transcript_failure_reason=None,
                     content_richness=normalized.content_richness,
                     content_source_type=normalized.content_source_type,
-                    digest_status="pending",
-                    digest_failure_reason=None,
                 )
             )
 
@@ -383,8 +350,6 @@ class Repository:
                     content_length=normalized.content_length,
                     content_richness=normalized.content_richness,
                     content_source_type=normalized.content_source_type,
-                    digest_status="pending",
-                    digest_failure_reason=None,
                 )
             )
 
@@ -426,8 +391,6 @@ class Repository:
                     markdown_failure_reason=None,
                     content_richness=normalized.content_richness,
                     content_source_type=normalized.content_source_type,
-                    digest_status="pending",
-                    digest_failure_reason=None,
                 )
             )
 
@@ -438,7 +401,7 @@ class Repository:
         return len(new_articles)
 
     def get_recent_normalized_source_items(self, hours: int) -> List[NormalizedSourceItem]:
-        return self._collect_normalized_source_items(hours=hours, pending_digest_only=False)
+        return self._collect_normalized_source_items(hours=hours)
 
     def get_anthropic_articles_pending_markdown(
         self, limit: Optional[int] = None
@@ -563,70 +526,6 @@ class Repository:
         video.content_source_type = normalized.content_source_type
         self.session.commit()
         return True
-
-    def get_articles_pending_digest(
-        self, limit: Optional[int] = None
-    ) -> List[NormalizedSourceItem]:
-        articles = self._collect_normalized_source_items(pending_digest_only=True)
-        if limit:
-            articles = articles[:limit]
-        return articles
-
-    def create_digest(
-        self,
-        article_type: str,
-        article_id: str,
-        url: str,
-        title: str,
-        summary: str,
-        published_at: Optional[datetime] = None,
-    ) -> Optional[Digest]:
-        digest_id = build_source_key(article_type, article_id)
-        existing = self.session.query(Digest).filter_by(id=digest_id).first()
-        if existing:
-            return None
-
-        if published_at:
-            if published_at.tzinfo is None:
-                published_at = published_at.replace(tzinfo=timezone.utc)
-            created_at = published_at
-        else:
-            created_at = datetime.now(timezone.utc)
-
-        digest = Digest(
-            id=digest_id,
-            article_type=article_type,
-            article_id=article_id,
-            url=url,
-            title=title,
-            summary=summary,
-            created_at=created_at,
-        )
-        self.session.add(digest)
-        self.session.commit()
-        return digest
-
-    def get_recent_digests(self, hours: int = 24) -> List[Dict[str, Any]]:
-        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
-        digests = (
-            self.session.query(Digest)
-            .filter(Digest.created_at >= cutoff_time)
-            .order_by(Digest.created_at.desc())
-            .all()
-        )
-
-        return [
-            {
-                "id": digest.id,
-                "article_type": digest.article_type,
-                "article_id": digest.article_id,
-                "url": digest.url,
-                "title": digest.title,
-                "summary": digest.summary,
-                "created_at": digest.created_at,
-            }
-            for digest in digests
-        ]
 
     def get_story_link_context(self, hours: int) -> Dict[str, Dict[str, Any]]:
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
@@ -1101,161 +1000,3 @@ class Repository:
             reverse=True,
         )
         return candidates
-
-    def _get_story_links_for_source_refs(
-        self,
-        source_refs: Sequence[tuple[str, str]],
-    ) -> Dict[str, StorySourceLink]:
-        if not source_refs:
-            return {}
-
-        links = (
-            self.session.query(StorySourceLink)
-            .filter(tuple_(StorySourceLink.source_type, StorySourceLink.source_id).in_(source_refs))
-            .all()
-        )
-        return {build_source_key(link.source_type, link.source_id): link for link in links}
-
-    def _get_source_metadata_map(
-        self,
-        source_refs: Sequence[tuple[str, str]],
-    ) -> Dict[str, Dict[str, Any]]:
-        metadata: Dict[str, Dict[str, Any]] = {}
-        refs_by_type: Dict[str, List[str]] = {"youtube": [], "openai": [], "anthropic": []}
-        for source_type, source_id in source_refs:
-            refs_by_type.setdefault(source_type, []).append(source_id)
-
-        if refs_by_type["youtube"]:
-            for video in (
-                self.session.query(YouTubeVideo)
-                .filter(YouTubeVideo.video_id.in_(refs_by_type["youtube"]))
-                .all()
-            ):
-                metadata[build_source_key("youtube", video.video_id)] = {
-                    "content_richness": video.content_richness,
-                    "content_source_type": video.content_source_type,
-                    "published_at": video.published_at,
-                }
-
-        if refs_by_type["openai"]:
-            for article in (
-                self.session.query(OpenAIArticle)
-                .filter(OpenAIArticle.guid.in_(refs_by_type["openai"]))
-                .all()
-            ):
-                metadata[build_source_key("openai", article.guid)] = {
-                    "content_richness": article.content_richness,
-                    "content_source_type": article.content_source_type,
-                    "published_at": article.published_at,
-                }
-
-        if refs_by_type["anthropic"]:
-            for article in (
-                self.session.query(AnthropicArticle)
-                .filter(AnthropicArticle.guid.in_(refs_by_type["anthropic"]))
-                .all()
-            ):
-                metadata[build_source_key("anthropic", article.guid)] = {
-                    "content_richness": article.content_richness,
-                    "content_source_type": article.content_source_type,
-                    "published_at": article.published_at,
-                }
-
-        return metadata
-
-    def get_recent_story_digests(self, hours: int = 24) -> List[Dict[str, Any]]:
-        recent_digests = self.get_recent_digests(hours=hours)
-        if not recent_digests:
-            return []
-
-        source_refs = [(digest["article_type"], digest["article_id"]) for digest in recent_digests]
-        story_link_map = self._get_story_links_for_source_refs(source_refs)
-        story_ids = {link.story_id for link in story_link_map.values()}
-        story_map = {
-            story.id: story
-            for story in self.session.query(Story).filter(Story.id.in_(story_ids)).all()
-        }
-        source_metadata = self._get_source_metadata_map(source_refs)
-
-        grouped_digests: Dict[str, List[Dict[str, Any]]] = {}
-        for digest in recent_digests:
-            source_key = build_source_key(digest["article_type"], digest["article_id"])
-            link = story_link_map.get(source_key)
-            group_key = link.story_id if link else digest["id"]
-            grouped_digests.setdefault(group_key, []).append(digest)
-
-        collapsed_digests: List[Dict[str, Any]] = []
-        for group_key, digests in grouped_digests.items():
-            if group_key in story_map:
-                story = story_map[group_key]
-                representative_digest_id = build_source_key(
-                    story.representative_source_type,
-                    story.representative_source_id,
-                )
-                digest_by_id = {digest["id"]: digest for digest in digests}
-                selected_digest = digest_by_id.get(representative_digest_id)
-                if selected_digest is None:
-                    selected_digest = max(
-                        digests,
-                        key=lambda digest: self._digest_selection_key(
-                            digest,
-                            source_metadata.get(digest["id"], {}),
-                        ),
-                    )
-                collapsed_digests.append(
-                    {
-                        **selected_digest,
-                        "story_id": story.id,
-                        "story_source_count": story.source_count,
-                    }
-                )
-            else:
-                collapsed_digests.append(
-                    {
-                        **digests[0],
-                        "story_id": None,
-                        "story_source_count": 1,
-                    }
-                )
-
-        collapsed_digests.sort(
-            key=lambda digest: self._normalize_datetime(digest["created_at"]),
-            reverse=True,
-        )
-        return collapsed_digests
-
-    def mark_digest_completed(self, article_type: str, article_id: str) -> bool:
-        record = None
-
-        if article_type == "youtube":
-            record = self.session.query(YouTubeVideo).filter_by(video_id=article_id).first()
-        elif article_type == "openai":
-            record = self.session.query(OpenAIArticle).filter_by(guid=article_id).first()
-        elif article_type == "anthropic":
-            record = self.session.query(AnthropicArticle).filter_by(guid=article_id).first()
-
-        if not record:
-            return False
-
-        record.digest_status = "completed"
-        record.digest_failure_reason = None
-        self.session.commit()
-        return True
-
-    def mark_digest_failed(self, article_type: str, article_id: str, reason: str) -> bool:
-        record = None
-
-        if article_type == "youtube":
-            record = self.session.query(YouTubeVideo).filter_by(video_id=article_id).first()
-        elif article_type == "openai":
-            record = self.session.query(OpenAIArticle).filter_by(guid=article_id).first()
-        elif article_type == "anthropic":
-            record = self.session.query(AnthropicArticle).filter_by(guid=article_id).first()
-
-        if not record:
-            return False
-
-        record.digest_status = "failed"
-        record.digest_failure_reason = reason
-        self.session.commit()
-        return True

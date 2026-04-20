@@ -214,35 +214,7 @@ def test_mark_anthropic_markdown_unavailable_preserves_summary_fallback(db_sessi
     assert article.content_source_type == "rss"
 
 
-def test_mark_digest_completed_and_failed(db_session):
-    repo = Repository(session=db_session)
-    now = datetime.now(timezone.utc)
-
-    repo.create_openai_article(
-        guid="openai-3",
-        title="A3",
-        url="https://openai.com/a3",
-        published_at=now,
-        description="summary",
-        category="news",
-    )
-
-    ok_failed = repo.mark_digest_failed("openai", "openai-3", "gemini_503")
-    article = db_session.query(OpenAIArticle).filter_by(guid="openai-3").first()
-
-    assert ok_failed is True
-    assert article.digest_status == "failed"
-    assert article.digest_failure_reason == "gemini_503"
-
-    ok_completed = repo.mark_digest_completed("openai", "openai-3")
-    article = db_session.query(OpenAIArticle).filter_by(guid="openai-3").first()
-
-    assert ok_completed is True
-    assert article.digest_status == "completed"
-    assert article.digest_failure_reason is None
-
-
-def test_get_articles_pending_digest_returns_normalized_items_and_fallbacks(db_session):
+def test_get_recent_normalized_source_items_returns_cleaned_rows(db_session):
     repo = Repository(session=db_session)
     now = datetime.now(timezone.utc)
 
@@ -303,7 +275,7 @@ def test_get_articles_pending_digest_returns_normalized_items_and_fallbacks(db_s
         category="news",
     )
 
-    rows = repo.get_articles_pending_digest()
+    rows = repo.get_recent_normalized_source_items(hours=24)
 
     ids = {row.source_id for row in rows}
     assert ids == {"yt-ready", "yt-summary", "openai-ready", "anthropic-summary"}
@@ -312,30 +284,3 @@ def test_get_articles_pending_digest_returns_normalized_items_and_fallbacks(db_s
     assert rows[1].source_id == "yt-summary"
     assert rows[1].content_richness == "summary"
     assert rows[1].content_source_type == "rss"
-
-
-def test_get_recent_digests_returns_newest_first(db_session):
-    repo = Repository(session=db_session)
-    now = datetime.now(timezone.utc)
-
-    repo.create_digest(
-        article_type="openai",
-        article_id="d1",
-        url="https://openai.com/1",
-        title="Digest 1",
-        summary="summary 1",
-        published_at=now - timedelta(hours=2),
-    )
-    repo.create_digest(
-        article_type="openai",
-        article_id="d2",
-        url="https://openai.com/2",
-        title="Digest 2",
-        summary="summary 2",
-        published_at=now,
-    )
-
-    rows = repo.get_recent_digests(hours=24)
-
-    assert rows[0]["article_id"] == "d2"
-    assert rows[1]["article_id"] == "d1"

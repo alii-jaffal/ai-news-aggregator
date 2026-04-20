@@ -46,7 +46,6 @@ class GeminiEmbeddingProvider:
             contents=list(texts),
             config=types.EmbedContentConfig(
                 output_dimensionality=EMBEDDING_OUTPUT_DIMENSIONALITY,
-                auto_truncate=True,
             ),
         )
         return [embedding.values for embedding in response.embeddings]

@@ -243,19 +243,22 @@ The email brief becomes less repetitive, and the project starts to look like an 
 
 **Goal**
 
-> Upgrade the digest layer from summarizing single inputs to synthesizing multiple sources about the same story into one stronger output.
+> Upgrade the digest layer from summarizing single inputs to producing one canonical digest per story, with multi-source synthesis when possible and explicit fallback behavior when it is not.
 
 **Exact work to do**
 
-- Use the new story clusters as the unit of summarization instead of individual source items whenever enough evidence is available.
-- Design a structured prompt and output schema that captures what happened, why it matters, supporting sources, and any disagreements between sources.
-- Preserve source attribution so the final output can still link back to the original OpenAI, Anthropic, and YouTube items that informed the story.
-- Rank stories, not just articles, so the newsletter focuses on the best topics rather than whichever source produced the most items.
-- Compare the quality of story-level digests against the current article-level approach and keep fallback behavior for sparse clusters.
+- Use the new story clusters as the unit of summarization and store one canonical digest row per story instead of generating only source-level digests.
+- Add explicit story-level digest status and metadata fields so the system can track pending work, failures, input changes, and the last processing time for each story.
+- Design a structured prompt and output schema that captures the story title, summary, why it matters, and any meaningful disagreement between sources.
+- Select digest inputs from cluster members in a stable way by keeping one representative source and adding diverse supporting sources when multi-source synthesis is possible.
+- Keep explicit synthesis modes for single-source, multi-source, and fallback generation so sparse or failed clusters still produce a usable digest when appropriate.
+- Preserve source attribution in downstream output so the final newsletter can indicate which source types and how many supporting items informed each story.
+- Feed recent story-level digests into ranking and email generation so the newsletter focuses on stories rather than repeating raw source items.
+- Add tests that cover story digest generation, fallback behavior, digest reuse rules, and integration with the pipeline and email flow.
 
 **Expected outcome**
 
-This becomes one of the project's standout features: a single ranked brief can summarize a real story across multiple AI sources instead of repeating the same topic several times.
+The project produces one stable digest per story, reduces duplicate coverage across OpenAI, Anthropic, and YouTube sources, and preserves useful attribution in the final newsletter. Multi-source synthesis improves story quality when enough evidence exists, while explicit fallback behavior keeps the system practical for sparse or uneven clusters.
 
 > ---
 

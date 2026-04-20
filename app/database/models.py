@@ -42,14 +42,6 @@ class YouTubeVideo(Base):
     content_source_type = Column(
         String(20), nullable=False, default="rss", server_default="rss"
     )
-    digest_status = Column(
-        String(20),
-        nullable=False,
-        default="pending",
-        server_default="pending",
-        index=True,
-    )
-    digest_failure_reason = Column(String(100), nullable=True)
 
 
 class OpenAIArticle(Base):
@@ -68,14 +60,6 @@ class OpenAIArticle(Base):
         String(20), nullable=False, default="missing", server_default="missing"
     )
     content_source_type = Column(String(20), nullable=False, default="rss", server_default="rss")
-    digest_status = Column(
-        String(20),
-        nullable=False,
-        default="pending",
-        server_default="pending",
-        index=True,
-    )
-    digest_failure_reason = Column(String(100), nullable=True)
 
 
 class AnthropicArticle(Base):
@@ -105,26 +89,6 @@ class AnthropicArticle(Base):
     content_source_type = Column(
         String(20), nullable=False, default="rss", server_default="rss"
     )
-    digest_status = Column(
-        String(20),
-        nullable=False,
-        default="pending",
-        server_default="pending",
-        index=True,
-    )
-    digest_failure_reason = Column(String(100), nullable=True)
-
-
-class Digest(Base):
-    __tablename__ = "digests"
-
-    id = Column(String, primary_key=True)
-    article_type = Column(String, nullable=False)
-    article_id = Column(String, nullable=False)
-    url = Column(String, nullable=False)
-    title = Column(String, nullable=False)
-    summary = Column(Text, nullable=False)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Story(Base):

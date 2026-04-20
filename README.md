@@ -214,7 +214,8 @@ uv run -m app.runner
 ```bash
 uv run -m app.services.process_anthropic
 uv run -m app.services.process_youtube
-uv run -m app.services.process_digest
+uv run -m app.services.process_story_clusters
+uv run -m app.services.process_story_digests
 uv run -m app.services.process_email
 ```
 
