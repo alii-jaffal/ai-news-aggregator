@@ -55,6 +55,9 @@ class CuratorAgent:
 
     def _build_system_prompt(self) -> str:
         interests = "\n".join(f"- {interest}" for interest in self.user_profile["interests"])
+        preferred_source_types = "\n".join(
+            f"- {source_type}" for source_type in self.user_profile.get("preferred_source_types", [])
+        )
         preferences = self.user_profile["preferences"]
         pref_text = "\n".join(f"- {k}: {v}" for k, v in preferences.items())
 
@@ -63,9 +66,11 @@ class CuratorAgent:
 
                     User Profile:
                     Name: {self.user_profile["name"]}
+                    Title: {self.user_profile.get("title", "")}
                     Background: {self.user_profile["background"]}
                     Expertise Level: {self.user_profile["expertise_level"]}
                     Interests: {interests}
+                    Preferred Source Types: {preferred_source_types or "- none specified"}
                     Preferences: {pref_text}
                  """
 

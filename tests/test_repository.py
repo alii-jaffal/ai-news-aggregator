@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
 
-from app.database.models import AnthropicArticle, OpenAIArticle, YouTubeVideo
+from app.database.models import AnthropicArticle, OpenAIArticle, UserProfile, YouTubeVideo
 from app.database.repository import Repository
 
 
@@ -284,3 +284,84 @@ def test_get_recent_normalized_source_items_returns_cleaned_rows(db_session):
     assert rows[1].source_id == "yt-summary"
     assert rows[1].content_richness == "summary"
     assert rows[1].content_source_type == "rss"
+
+
+def test_upsert_user_profile_creates_and_updates_single_row(db_session):
+    repo = Repository(session=db_session)
+
+    created = repo.upsert_user_profile(
+        slug="ali",
+        name="Ali",
+        title="AI Engineer",
+        background="Builds AI systems",
+        expertise_level="Intermediate",
+        interests=["agents", "rag"],
+        preferred_source_types=["openai", "youtube"],
+        preferences={"prefer_practical": True},
+        newsletter_top_n=7,
+    )
+
+    updated = repo.upsert_user_profile(
+        slug="ali",
+        name="Ali Jaffal",
+        title="Senior AI Engineer",
+        background="Builds production AI systems",
+        expertise_level="Advanced",
+        interests=["agents", "rag", "infra"],
+        preferred_source_types=["openai"],
+        preferences={"prefer_practical": True, "avoid_marketing_hype": True},
+        newsletter_top_n=5,
+    )
+
+    rows = repo.list_user_profiles()
+
+    assert created.id == updated.id
+    assert len(rows) == 1
+    assert rows[0].slug == "ali"
+    assert rows[0].name == "Ali Jaffal"
+    assert rows[0].newsletter_top_n == 5
+    assert rows[0].is_active is True
+
+
+def test_set_active_user_profile_switches_active_profile(db_session):
+    repo = Repository(session=db_session)
+
+    repo.upsert_user_profile(
+        slug="ali",
+        name="Ali",
+        title="AI Engineer",
+        background="Builds AI systems",
+        expertise_level="Intermediate",
+        interests=["agents"],
+        preferred_source_types=["openai"],
+        preferences={"prefer_practical": True},
+        newsletter_top_n=5,
+    )
+    repo.upsert_user_profile(
+        slug="team",
+        name="Team",
+        title="Research Team",
+        background="Tracks AI news",
+        expertise_level="Intermediate",
+        interests=["research"],
+        preferred_source_types=["anthropic"],
+        preferences={"prefer_research_breakthroughs": True},
+        newsletter_top_n=8,
+    )
+
+    activated = repo.set_active_user_profile("team")
+
+    ali = repo.get_user_profile_by_slug("ali")
+    team = repo.get_user_profile_by_slug("team")
+
+    assert activated is not None
+    assert activated.slug == "team"
+    assert ali is not None and ali.is_active is False
+    assert team is not None and team.is_active is True
+
+
+def test_get_active_user_profile_returns_none_when_missing(db_session):
+    repo = Repository(session=db_session)
+
+    assert repo.get_active_user_profile() is None
+    assert db_session.query(UserProfile).count() == 0

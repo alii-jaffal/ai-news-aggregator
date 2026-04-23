@@ -185,6 +185,8 @@ uv run -m app.database.create_tables
 uv run .\main.py
 ```
 
+When you omit the second argument, the newsletter size defaults to the active DB-backed user profile.
+
 Optional arguments:
 
 ```bash
@@ -218,6 +220,17 @@ uv run -m app.services.process_story_clusters
 uv run -m app.services.process_story_digests
 uv run -m app.services.process_email
 ```
+
+### Manage user profiles
+
+```bash
+uv run -m app.profiles.manage_profiles list
+uv run -m app.profiles.manage_profiles show-active
+uv run -m app.profiles.manage_profiles upsert --slug default --name "Ali Jaffal" --title "AI Engineer & Researcher" --background "Experienced AI engineer focused on practical systems" --expertise-level Intermediate --interest "AI agents" --preferred-source-type youtube --preferred-source-type openai --preferred-source-type anthropic --preference prefer_practical=true --newsletter-top-n 10 --active
+uv run -m app.profiles.manage_profiles set-active default
+```
+
+The legacy `app/profiles/user_profile.py` file is now only used to seed the first profile automatically.
 
 ## Known limitations
 

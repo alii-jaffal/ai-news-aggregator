@@ -4,16 +4,18 @@ from typing import List
 from app.agent.curator_agent import CuratorAgent
 from app.agent.email_agent import EmailAgent, EmailDigestResponse, RankedArticleDetail
 from app.database.repository import Repository
-from app.profiles.user_profile import USER_PROFILE
+from app.profiles.profile_store import get_runtime_user_profile
 from app.services.email_service import digest_to_html, send_email
 
 logger = logging.getLogger(__name__)
 
 
-def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestResponse | None:
-    curator = CuratorAgent(USER_PROFILE)
-    email_agent = EmailAgent(USER_PROFILE)
+def generate_email_digest(hours: int = 24, top_n: int | None = None) -> EmailDigestResponse | None:
     repo = Repository()
+    user_profile = get_runtime_user_profile(repo=repo)
+    curator = CuratorAgent(user_profile)
+    email_agent = EmailAgent(user_profile)
+    resolved_top_n = top_n if top_n is not None else user_profile["newsletter_top_n"]
 
     digests = repo.get_recent_story_digest_candidates(hours=hours)
     if not digests:
@@ -65,7 +67,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     email_digest = email_agent.create_email_digest_response(
         ranked_articles=article_details,
         total_ranked=len(ranked_articles),
-        limit=top_n,
+        limit=resolved_top_n,
     )
 
     logger.info("Email digest generated successfully")
@@ -76,7 +78,7 @@ def generate_email_digest(hours: int = 24, top_n: int = 10) -> EmailDigestRespon
     return email_digest
 
 
-def send_digest_email(hours: int = 24, top_n: int = 10) -> dict:
+def send_digest_email(hours: int = 24, top_n: int | None = None) -> dict:
     try:
         result = generate_email_digest(hours=hours, top_n=top_n)
 

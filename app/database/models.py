@@ -5,6 +5,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Integer,
+    JSON,
     String,
     Text,
     UniqueConstraint,
@@ -137,6 +138,34 @@ class StoryDigest(Base):
     available_source_count = Column(Integer, nullable=False)
     used_source_count = Column(Integer, nullable=False)
     generated_input_hash = Column(String(64), nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
+
+
+class UserProfile(Base):
+    __tablename__ = "user_profiles"
+
+    id = Column(String, primary_key=True)
+    slug = Column(String(100), nullable=False, unique=True)
+    name = Column(String, nullable=False)
+    title = Column(String, nullable=False)
+    background = Column(Text, nullable=False)
+    expertise_level = Column(String(50), nullable=False)
+    interests = Column(JSON, nullable=False)
+    preferred_source_types = Column(JSON, nullable=False)
+    preferences = Column(JSON, nullable=False)
+    newsletter_top_n = Column(Integer, nullable=False, default=10, server_default="10")
+    is_active = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
+    )
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(
         DateTime(timezone=True),

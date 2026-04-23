@@ -1,4 +1,5 @@
 USER_PROFILE = {
+    "slug": "default",
     "name": "Ali Jaffal",
     "title": "AI Engineer & Researcher",
     "background": "Experienced AI engineer with deep interest in practical AI applications, research breakthroughs, and production-ready systems",
@@ -14,6 +15,7 @@ USER_PROFILE = {
         "Research papers with practical implications",
         "AI infrastructure and scaling challenges",
     ],
+    "preferred_source_types": ["youtube", "openai", "anthropic"],
     "preferences": {
         "prefer_practical": True,
         "prefer_technical_depth": True,
@@ -22,4 +24,5 @@ USER_PROFILE = {
         "avoid_marketing_hype": True,
     },
     "expertise_level": "Intermediate",
+    "newsletter_top_n": 10,
 }

@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence
+from uuid import uuid4
 
 from sqlalchemy import tuple_
 from sqlalchemy.orm import Session
@@ -25,6 +26,7 @@ from .models import (
     Story,
     StoryDigest,
     StorySourceLink,
+    UserProfile,
     YouTubeVideo,
 )
 
@@ -32,6 +34,76 @@ from .models import (
 class Repository:
     def __init__(self, session: Optional[Session] = None):
         self.session = session or get_session()
+
+    def get_user_profile_by_slug(self, slug: str) -> Optional[UserProfile]:
+        return self.session.query(UserProfile).filter_by(slug=slug).first()
+
+    def list_user_profiles(self) -> List[UserProfile]:
+        return (
+            self.session.query(UserProfile)
+            .order_by(UserProfile.is_active.desc(), UserProfile.slug.asc())
+            .all()
+        )
+
+    def get_active_user_profile(self) -> Optional[UserProfile]:
+        return self.session.query(UserProfile).filter_by(is_active=True).first()
+
+    def upsert_user_profile(
+        self,
+        *,
+        slug: str,
+        name: str,
+        title: str,
+        background: str,
+        expertise_level: str,
+        interests: Sequence[str],
+        preferred_source_types: Sequence[str],
+        preferences: Dict[str, Any],
+        newsletter_top_n: int,
+        is_active: Optional[bool] = None,
+    ) -> UserProfile:
+        profile = self.get_user_profile_by_slug(slug)
+        if profile is None:
+            profile = UserProfile(id=str(uuid4()), slug=slug)
+            self.session.add(profile)
+
+        profile.name = name
+        profile.title = title
+        profile.background = background
+        profile.expertise_level = expertise_level
+        profile.interests = list(interests)
+        profile.preferred_source_types = list(preferred_source_types)
+        profile.preferences = dict(preferences)
+        profile.newsletter_top_n = newsletter_top_n
+
+        if is_active is True:
+            (
+                self.session.query(UserProfile)
+                .filter(UserProfile.slug != slug, UserProfile.is_active.is_(True))
+                .update({"is_active": False}, synchronize_session=False)
+            )
+            profile.is_active = True
+        elif is_active is False:
+            profile.is_active = False
+        elif self.get_active_user_profile() is None:
+            profile.is_active = True
+
+        self.session.commit()
+        return profile
+
+    def set_active_user_profile(self, slug: str) -> Optional[UserProfile]:
+        profile = self.get_user_profile_by_slug(slug)
+        if profile is None:
+            return None
+
+        (
+            self.session.query(UserProfile)
+            .filter(UserProfile.is_active.is_(True))
+            .update({"is_active": False}, synchronize_session=False)
+        )
+        profile.is_active = True
+        self.session.commit()
+        return profile
 
     @staticmethod
     def _build_normalized_source_item(
