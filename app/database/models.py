@@ -174,6 +174,59 @@ class UserProfile(Base):
     )
 
 
+class PipelineRun(Base):
+    __tablename__ = "pipeline_runs"
+
+    id = Column(String, primary_key=True)
+    trigger_source = Column(String(20), nullable=False, index=True)
+    requested_hours = Column(Integer, nullable=False)
+    requested_top_n = Column(Integer, nullable=True)
+    profile_slug = Column(String(100), nullable=False, index=True)
+    send_email = Column(
+        Boolean,
+        nullable=False,
+        default=True,
+        server_default="true",
+    )
+    status = Column(String(20), nullable=False, index=True)
+    error_message = Column(Text, nullable=True)
+    scraping_summary = Column(JSON, nullable=True)
+    processing_summary = Column(JSON, nullable=True)
+    digest_summary = Column(JSON, nullable=True)
+    email_summary = Column(JSON, nullable=True)
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+
+class NewsletterRun(Base):
+    __tablename__ = "newsletter_runs"
+
+    id = Column(String, primary_key=True)
+    pipeline_run_id = Column(
+        String,
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    profile_slug = Column(String(100), nullable=False, index=True)
+    window_hours = Column(Integer, nullable=False)
+    resolved_top_n = Column(Integer, nullable=False)
+    subject = Column(String, nullable=False)
+    greeting = Column(Text, nullable=False)
+    introduction = Column(Text, nullable=False)
+    sent = Column(
+        Boolean,
+        nullable=False,
+        default=False,
+        server_default="false",
+        index=True,
+    )
+    article_count = Column(Integer, nullable=False)
+    payload_json = Column(JSON, nullable=False)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class StorySourceLink(Base):
     __tablename__ = "story_source_links"
     __table_args__ = (

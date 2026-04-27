@@ -1,22 +1,24 @@
 # AI News Aggregator
 
-AI News Aggregator is a Python project that collects recent AI updates from multiple sources, stores them in PostgreSQL, enriches the content when possible, generates short digests with Gemini, ranks those digests for a user profile, and sends a daily email newsletter in both plain text and HTML.
+AI News Aggregator is a Python pipeline that collects recent AI updates from multiple sources, stores them in PostgreSQL, enriches the content when possible, clusters related coverage into stories, generates story-level digests with Gemini, ranks them for an active user profile, and sends a daily email newsletter.
 
-The project is built as a pipeline, not a single script. It has separate layers for scraping, persistence, enrichment, digest generation, ranking, and email delivery.
+The project now also includes a local FastAPI + React dashboard for demoing the system, browsing historical data, inspecting failures, and triggering safe no-email reruns.
 
 ## What the project does
 
 High-level flow:
 
-1. Scrape recent items from configured sources.
+1. Scrape recent source items from YouTube, OpenAI, and Anthropic feeds.
 2. Store raw source records in PostgreSQL.
 3. Enrich source content where possible.
    - YouTube videos -> transcript text when available
    - Anthropic articles -> markdown extracted from the page
    - OpenAI articles -> RSS title/description metadata
-4. Generate digest records for items that do not already have one.
-5. Rank recent digests against the project’s user profile.
-6. Generate and send a daily email digest.
+4. Cluster related source items into story records.
+5. Generate one canonical digest per story.
+6. Rank recent story digests against the active DB-backed user profile.
+7. Generate a newsletter snapshot and optionally send it by email.
+8. Persist pipeline run history and newsletter snapshots for the dashboard.
 
 ## Current sources
 
@@ -42,70 +44,62 @@ High-level flow:
 
 ```text
 Sources
-  ├─ YouTube RSS
-  ├─ OpenAI RSS
-  └─ Anthropic RSS
+  |- YouTube RSS
+  |- OpenAI RSS
+  `- Anthropic RSS
         |
         v
 Scrapers
         |
         v
-PostgreSQL raw tables
+PostgreSQL source tables
         |
         +--> Anthropic markdown enrichment
-        |
         +--> YouTube transcript enrichment
         |
         v
-Digest generation with Gemini
+Story clustering
         |
         v
-Digest table
+Story digests with Gemini
         |
         v
-Ranking with Gemini curator
+Ranking + newsletter generation
         |
-        v
-Email introduction + HTML rendering + SMTP delivery
+        +--> SMTP email delivery
+        `--> Pipeline/newsletter history tables
+                    |
+                    v
+            FastAPI dashboard API
+                    |
+                    v
+             React demo interface
 ```
 
 ## Project structure
 
 ```text
 .
+├── alembic/
 ├── app/
 │   ├── agent/
-│   │   ├── curator_agent.py
-│   │   ├── digest_agent.py
-│   │   └── email_agent.py
+│   ├── api/
 │   ├── database/
-│   │   ├── connection.py
-│   │   ├── create_tables.py
-│   │   ├── models.py
-│   │   └── repository.py
 │   ├── profiles/
-│   │   └── user_profile.py
 │   ├── scrapers/
-│   │   ├── anthropic.py
-│   │   ├── openai.py
-│   │   └── youtube.py
 │   ├── services/
-│   │   ├── email_service.py
-│   │   ├── process_anthropic.py
-│   │   ├── process_curator.py
-│   │   ├── process_digest.py
-│   │   ├── process_email.py
-│   │   └── process_youtube.py
-│   ├── config.py
+│   ├── content_normalization.py
 │   ├── daily_runner.py
+│   ├── logging_config.py
 │   ├── runner.py
-|   ├── logging_config.py    
-│   └── settings.py
-├── docker/
-│   └── docker-compose.yaml
-├── logs/
-│   └── pipeline.log
-│
+│   ├── settings.py
+│   ├── story_clustering.py
+│   └── story_digesting.py
+├── frontend/
+│   ├── src/
+│   ├── package.json
+│   └── vite.config.ts
+├── tests/
 ├── main.py
 ├── pyproject.toml
 └── README.md
@@ -116,25 +110,26 @@ Email introduction + HTML rendering + SMTP delivery
 - Python 3.11+
 - PostgreSQL
 - SQLAlchemy
+- Alembic
+- FastAPI
+- React + TypeScript + Vite
 - Pydantic
-- pydantic-settings
 - Google Gemini
 - feedparser
 - youtube-transcript-api
 - Docling
-- markdown
 - Gmail SMTP
 - Docker / Docker Compose
 
 ## Quick start
 
-### 1. Install dependencies
+### 1. Install Python dependencies
 
 ```bash
 uv sync
 ```
 
-### 2. Create a single root `.env`
+### 2. Create a root `.env`
 
 Create `.env` in the project root.
 
@@ -162,30 +157,29 @@ PROXY_PASSWORD=
 
 ### 3. Start PostgreSQL
 
-Use whichever workflow you prefer:
-
-#### Option A: Docker Compose
-
 ```bash
 docker compose -f docker/docker-compose.yaml up -d
 ```
 
-#### Option B: Docker Desktop
-Start the existing Postgres container from Docker Desktop after it has been created from the compose file.
-
-### 4. Create tables
+### 4. Apply database migrations
 
 ```bash
-uv run -m app.database.create_tables
+uv run alembic upgrade head
 ```
 
-### 5. Run the full pipeline
+This creates the current schema, including:
+
+- source tables
+- story and story digest tables
+- DB-backed user profiles
+- pipeline run history
+- newsletter snapshot history
+
+### 5. Run the full CLI pipeline
 
 ```bash
 uv run .\main.py
 ```
-
-When you omit the second argument, the newsletter size defaults to the active DB-backed user profile.
 
 Optional arguments:
 
@@ -194,8 +188,38 @@ uv run .\main.py 24 10
 ```
 
 Where:
+
 - `24` = hours to look back
-- `10` = number of top ranked articles to include in the email
+- `10` = top-ranked items to include
+
+If the second argument is omitted, the pipeline uses `newsletter_top_n` from the active user profile.
+
+## Dashboard setup
+
+### 1. Install frontend dependencies
+
+```bash
+cd frontend
+npm install
+```
+
+### 2. Run the FastAPI backend
+
+From the repo root:
+
+```bash
+uv run uvicorn app.api.main:app --reload
+```
+
+### 3. Run the React frontend
+
+From `frontend/`:
+
+```bash
+npm run dev
+```
+
+The React app expects the FastAPI API at `http://127.0.0.1:8000/api` by default.
 
 ## Official commands
 
@@ -221,6 +245,12 @@ uv run -m app.services.process_story_digests
 uv run -m app.services.process_email
 ```
 
+### Run the dashboard API
+
+```bash
+uv run uvicorn app.api.main:app --reload
+```
+
 ### Manage user profiles
 
 ```bash
@@ -232,54 +262,80 @@ uv run -m app.profiles.manage_profiles set-active default
 
 The legacy `app/profiles/user_profile.py` file is now only used to seed the first profile automatically.
 
+## Dashboard behavior
+
+- The dashboard is local-only in v1.
+- Dashboard-triggered reruns create pipeline history rows and newsletter snapshots.
+- Dashboard-triggered reruns do **not** send email.
+- CLI-triggered runs keep normal email behavior.
+
+## Tests
+
+Run backend tests:
+
+```bash
+uv run pytest
+```
+
+Run frontend tests:
+
+```bash
+cd frontend
+npm run test
+```
+
 ## Known limitations
 
 - OpenAI entries currently use RSS metadata rather than full article extraction.
 - Some YouTube videos have no transcript available.
 - Gemini calls can occasionally fail with temporary `503 UNAVAILABLE` responses during high demand.
-- Ranking and email generation currently depend on successful LLM calls.
+- The dashboard is intended for local demo/admin use and does not include authentication in v1.
+- The first dashboard version uses filter-based archive browsing rather than full-text search across all cleaned content.
 
 ## Troubleshooting
 
 ### Database connection fails
+
 Check:
-- PostgreSQL container is running
+
+- PostgreSQL is running
 - root `.env` values are correct
 - `POSTGRES_HOST` is correct for your setup
-- tables were created successfully
+- `uv run alembic upgrade head` completed successfully
 
 ### No transcripts were processed
+
 Possible reasons:
+
 - the newly scraped videos already had transcripts stored
 - the videos do not expose transcripts
 - transcript retrieval is rate-limited or blocked
 
-### Digest generation or ranking fails with 503
+### Digest generation or ranking fails with `503`
+
 This is usually a temporary Gemini availability issue, not a project import/config problem. Re-run the stage later.
 
 ### Email fails
+
 Check:
+
 - `EMAIL` and `APP_PASSWORD` are set correctly
-- Gmail app password is valid
+- the Gmail app password is valid
 - the ranking step succeeded
 
-## Duplicate Handling and Rerun Safety
+### Dashboard rerun looks successful but no email arrived
+
+That is expected. Dashboard reruns intentionally store results without sending email.
+
+## Duplicate handling and rerun safety
 
 The pipeline is designed to be rerun safely for the same time window.
 
 - YouTube videos are deduplicated by `video_id`
 - OpenAI articles are deduplicated by `guid`
 - Anthropic articles are deduplicated by `guid`
-- Digests are deduplicated by deterministic IDs in the form `article_type:article_id`
+- story digests are reused when the digest input hash is unchanged
 
 Source ingestion uses batch existence checks before inserts, so repeated runs do not create duplicate rows.
 
-Enrichment stages use explicit status fields such as `transcript_status`, `markdown_status`, and `digest_status`, which makes partial reruns intentional and safe.
-
-## Future improvement areas
-
-- retry and fallback handling for Gemini failures
-- story deduplication across sources
-- richer source analytics and failure tracking
-- persistent user preferences
-- web dashboard for browsing archived digests
+Enrichment and digest stages use explicit status fields, and dashboard reruns are guarded so only one API-triggered run can be active at a time.

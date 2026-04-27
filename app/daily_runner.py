@@ -1,9 +1,11 @@
 import logging
 from datetime import datetime
 
+from app.database.repository import Repository
+from app.profiles.profile_store import get_runtime_user_profile
 from app.runner import run_scrapers
 from app.services.process_anthropic import process_anthropic_markdown
-from app.services.process_email import send_digest_email
+from app.services.process_email import run_email_stage
 from app.services.process_story_clusters import process_story_clusters
 from app.services.process_story_digests import process_story_digests
 from app.services.process_youtube import process_youtube_transcripts
@@ -11,7 +13,17 @@ from app.services.process_youtube import process_youtube_transcripts
 logger = logging.getLogger(__name__)
 
 
-def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
+def run_daily_pipeline(
+    hours: int = 24,
+    top_n: int | None = None,
+    *,
+    send_email: bool = True,
+    trigger_source: str = "cli",
+    pipeline_run_id: str | None = None,
+    repo: Repository | None = None,
+) -> dict:
+    created_repo = repo is None
+    repo = repo or Repository()
     start_time = datetime.now()
     logger.info("=" * 60)
     logger.info("Starting Daily AI News Aggregator Pipeline")
@@ -27,6 +39,24 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
     }
 
     try:
+        user_profile = get_runtime_user_profile(repo=repo)
+        if pipeline_run_id is None:
+            pipeline_run = repo.create_pipeline_run(
+                trigger_source=trigger_source,
+                requested_hours=hours,
+                requested_top_n=top_n,
+                profile_slug=user_profile["slug"],
+                send_email=send_email,
+            )
+            pipeline_run_id = pipeline_run.id
+        else:
+            pipeline_run = repo.get_pipeline_run(pipeline_run_id)
+            if pipeline_run is None:
+                raise ValueError(f"Pipeline run {pipeline_run_id} does not exist")
+
+        results["pipeline_run_id"] = pipeline_run_id
+        repo.mark_pipeline_run_running(pipeline_run_id)
+
         logger.info("[1/6] Scraping articles from sources...")
         scraping_results = run_scrapers(hours=hours)
         results["scraping"] = {
@@ -34,6 +64,7 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
             "openai": len(scraping_results.get("openai", [])),
             "anthropic": len(scraping_results.get("anthropic", [])),
         }
+        repo.update_pipeline_run_progress(pipeline_run_id, scraping_summary=results["scraping"])
         logger.info(
             "Scraped %s YouTube videos, %s OpenAI articles, %s Anthropic articles",
             results["scraping"]["youtube"],
@@ -44,6 +75,10 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
         logger.info("[2/6] Processing Anthropic markdown...")
         anthropic_result = process_anthropic_markdown()
         results["processing"]["anthropic"] = anthropic_result
+        repo.update_pipeline_run_progress(
+            pipeline_run_id,
+            processing_summary=results["processing"],
+        )
         logger.info(
             "Processed %s Anthropic articles (%s unavailable, %s failed)",
             anthropic_result["processed"],
@@ -54,6 +89,10 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
         logger.info("[3/6] Processing YouTube transcripts...")
         youtube_result = process_youtube_transcripts()
         results["processing"]["youtube"] = youtube_result
+        repo.update_pipeline_run_progress(
+            pipeline_run_id,
+            processing_summary=results["processing"],
+        )
         logger.info(
             "Processed %s transcripts (%s unavailable, %s failed)",
             youtube_result["processed"],
@@ -62,8 +101,12 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
         )
 
         logger.info("[4/6] Clustering source items into stories...")
-        story_result = process_story_clusters(hours=hours)
+        story_result = process_story_clusters(hours=hours, repo=repo)
         results["processing"]["stories"] = story_result
+        repo.update_pipeline_run_progress(
+            pipeline_run_id,
+            processing_summary=results["processing"],
+        )
         logger.info(
             "Clustered %s items into %s stories (%s multi-item, %s singleton)",
             story_result["items_considered"],
@@ -73,8 +116,9 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
         )
 
         logger.info("[5/6] Creating canonical story digests...")
-        digest_result = process_story_digests()
+        digest_result = process_story_digests(repo=repo)
         results["digests"] = digest_result
+        repo.update_pipeline_run_progress(pipeline_run_id, digest_summary=results["digests"])
         logger.info(
             "Created %s story digests (%s failed, %s fallback out of %s total)",
             digest_result["processed"],
@@ -83,9 +127,16 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
             digest_result["total"],
         )
 
-        logger.info("[6/6] Generating and sending email digest...")
-        email_result = send_digest_email(hours=hours, top_n=top_n)
+        logger.info("[6/6] Generating and %s email digest...", "sending" if send_email else "capturing")
+        email_result = run_email_stage(
+            hours=hours,
+            top_n=top_n,
+            send_email_enabled=send_email,
+            pipeline_run_id=pipeline_run_id,
+            repo=repo,
+        )
         results["email"] = email_result
+        repo.update_pipeline_run_progress(pipeline_run_id, email_summary=email_result)
 
         if email_result.get("success") and email_result.get("sent"):
             logger.info(
@@ -108,6 +159,27 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
     results["end_time"] = end_time.isoformat()
     results["duration_seconds"] = duration
 
+    if pipeline_run_id is not None:
+        if results["success"]:
+            repo.complete_pipeline_run(
+                pipeline_run_id,
+                scraping_summary=results["scraping"],
+                processing_summary=results["processing"],
+                digest_summary=results["digests"],
+                email_summary=results["email"],
+            )
+        else:
+            repo.fail_pipeline_run(
+                pipeline_run_id,
+                error_message=results.get("error")
+                or results.get("email", {}).get("error")
+                or "Pipeline failed",
+                scraping_summary=results["scraping"],
+                processing_summary=results["processing"],
+                digest_summary=results["digests"],
+                email_summary=results["email"],
+            )
+
     logger.info("=" * 60)
     logger.info("Pipeline Summary")
     logger.info("=" * 60)
@@ -126,6 +198,9 @@ def run_daily_pipeline(hours: int = 24, top_n: int | None = None) -> dict:
 
     logger.info("Email: %s", email_status)
     logger.info("=" * 60)
+
+    if created_repo:
+        repo.close()
 
     return results
 

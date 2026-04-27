@@ -1,5 +1,6 @@
 from app.agent.curator_agent import RankedArticle
 from app.agent.email_agent import EmailDigestResponse, EmailIntroduction, RankedArticleDetail
+from app.database.repository import Repository
 from app.services import process_email
 
 
@@ -7,8 +8,14 @@ class FakeRepositoryNoDigests:
     def get_recent_story_digest_candidates(self, hours=24):
         return []
 
+    def close(self):
+        return None
+
 
 class FakeRepositoryWithDigests:
+    def __init__(self):
+        self.newsletter_runs = {}
+
     def get_recent_story_digest_candidates(self, hours=24):
         return [
             {
@@ -26,6 +33,18 @@ class FakeRepositoryWithDigests:
                 "source_attribution_line": "Source: OpenAI",
             }
         ]
+
+    def create_newsletter_run(self, **kwargs):
+        run = type("NewsletterRun", (), {"id": "newsletter-1"})()
+        self.newsletter_runs[run.id] = {"kwargs": kwargs, "sent": False}
+        return run
+
+    def mark_newsletter_run_sent(self, newsletter_run_id, sent=True):
+        self.newsletter_runs[newsletter_run_id]["sent"] = sent
+        return type("NewsletterRun", (), {"id": newsletter_run_id, "sent": sent})()
+
+    def close(self):
+        return None
 
 
 class FakeCuratorAgentSuccess:
@@ -152,6 +171,7 @@ def test_send_digest_email_fails_when_ranking_fails(monkeypatch):
 
 def test_send_digest_email_happy_path(monkeypatch):
     sent = {"called": False}
+    repo = FakeRepositoryWithDigests()
 
     def fake_send_email(subject, body_text, body_html=None, recipients=None):
         sent["called"] = True
@@ -160,7 +180,7 @@ def test_send_digest_email_happy_path(monkeypatch):
         assert "Source: OpenAI" in body_text
         assert body_html is not None
 
-    monkeypatch.setattr(process_email, "Repository", lambda: FakeRepositoryWithDigests())
+    monkeypatch.setattr(process_email, "Repository", lambda: repo)
     monkeypatch.setattr(process_email, "CuratorAgent", FakeCuratorAgentSuccess)
     monkeypatch.setattr(process_email, "EmailAgent", FakeEmailAgent)
     monkeypatch.setattr(process_email, "send_email", fake_send_email)
@@ -176,6 +196,7 @@ def test_send_digest_email_happy_path(monkeypatch):
     assert result["success"] is True
     assert result["sent"] is True
     assert result["articles_count"] == 1
+    assert repo.newsletter_runs["newsletter-1"]["sent"] is True
 
 
 def test_generate_email_digest_uses_profile_default_top_n(monkeypatch):
@@ -211,3 +232,48 @@ def test_generate_email_digest_prefers_explicit_top_n_over_profile_default(monke
     process_email.generate_email_digest(hours=24, top_n=1)
 
     assert FakeEmailAgent.last_limit == 1
+
+
+def test_run_email_stage_persists_snapshot_without_sending(monkeypatch, db_session):
+    repo = Repository(session=db_session)
+    repo.get_recent_story_digest_candidates = lambda hours=24: [
+        {
+            "id": "story:story-1",
+            "story_id": "story-1",
+            "article_type": "story",
+            "url": "https://openai.com/1",
+            "title": "OpenAI Story Digest",
+            "summary": "Summary text",
+            "why_it_matters": "Why it matters text",
+            "created_at": None,
+            "story_source_count": 1,
+            "source_types": ["openai"],
+            "synthesis_mode": "single_source",
+            "source_attribution_line": "Source: OpenAI",
+        }
+    ]
+
+    monkeypatch.setattr(process_email, "CuratorAgent", FakeCuratorAgentSuccess)
+    monkeypatch.setattr(process_email, "EmailAgent", FakeEmailAgent)
+    monkeypatch.setattr(
+        process_email,
+        "get_runtime_user_profile",
+        lambda repo=None: fake_runtime_profile(newsletter_top_n=4),
+    )
+
+    result = process_email.run_email_stage(
+        hours=24,
+        top_n=None,
+        send_email_enabled=False,
+        pipeline_run_id="run-1",
+        repo=repo,
+    )
+
+    newsletters = repo.list_newsletter_runs(limit=10, offset=0)
+
+    assert result["success"] is True
+    assert result["sent"] is False
+    assert result["reason"] == "send_disabled"
+    assert newsletters["total"] == 1
+    assert newsletters["items"][0]["sent"] is False
+    assert newsletters["items"][0]["profile_slug"] == "default"

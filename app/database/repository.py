@@ -2,7 +2,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Sequence
 from uuid import uuid4
 
-from sqlalchemy import tuple_
+from sqlalchemy import or_, tuple_
 from sqlalchemy.orm import Session
 
 from app.content_normalization import (
@@ -22,7 +22,9 @@ from app.story_digesting import (
 from .connection import get_session
 from .models import (
     AnthropicArticle,
+    NewsletterRun,
     OpenAIArticle,
+    PipelineRun,
     Story,
     StoryDigest,
     StorySourceLink,
@@ -33,7 +35,12 @@ from .models import (
 
 class Repository:
     def __init__(self, session: Optional[Session] = None):
+        self._owns_session = session is None
         self.session = session or get_session()
+
+    def close(self) -> None:
+        if self._owns_session:
+            self.session.close()
 
     def get_user_profile_by_slug(self, slug: str) -> Optional[UserProfile]:
         return self.session.query(UserProfile).filter_by(slug=slug).first()
@@ -105,6 +112,213 @@ class Repository:
         self.session.commit()
         return profile
 
+    def has_active_pipeline_run(self) -> bool:
+        return (
+            self.session.query(PipelineRun.id)
+            .filter(PipelineRun.status.in_(("queued", "running")))
+            .first()
+            is not None
+        )
+
+    def create_pipeline_run(
+        self,
+        *,
+        trigger_source: str,
+        requested_hours: int,
+        requested_top_n: int | None,
+        profile_slug: str,
+        send_email: bool,
+        status: str = "queued",
+    ) -> PipelineRun:
+        pipeline_run = PipelineRun(
+            id=str(uuid4()),
+            trigger_source=trigger_source,
+            requested_hours=requested_hours,
+            requested_top_n=requested_top_n,
+            profile_slug=profile_slug,
+            send_email=send_email,
+            status=status,
+            scraping_summary={},
+            processing_summary={},
+            digest_summary={},
+            email_summary={},
+            started_at=datetime.now(timezone.utc),
+        )
+        self.session.add(pipeline_run)
+        self.session.commit()
+        return pipeline_run
+
+    def get_pipeline_run(self, run_id: str) -> Optional[PipelineRun]:
+        return self.session.query(PipelineRun).filter_by(id=run_id).first()
+
+    def mark_pipeline_run_running(self, run_id: str) -> Optional[PipelineRun]:
+        pipeline_run = self.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            return None
+
+        pipeline_run.status = "running"
+        if pipeline_run.started_at is None:
+            pipeline_run.started_at = datetime.now(timezone.utc)
+        self.session.commit()
+        return pipeline_run
+
+    def update_pipeline_run_progress(
+        self,
+        run_id: str,
+        *,
+        scraping_summary: Dict[str, Any] | None = None,
+        processing_summary: Dict[str, Any] | None = None,
+        digest_summary: Dict[str, Any] | None = None,
+        email_summary: Dict[str, Any] | None = None,
+    ) -> Optional[PipelineRun]:
+        pipeline_run = self.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            return None
+
+        if scraping_summary is not None:
+            pipeline_run.scraping_summary = scraping_summary
+        if processing_summary is not None:
+            pipeline_run.processing_summary = processing_summary
+        if digest_summary is not None:
+            pipeline_run.digest_summary = digest_summary
+        if email_summary is not None:
+            pipeline_run.email_summary = email_summary
+
+        self.session.commit()
+        return pipeline_run
+
+    def complete_pipeline_run(
+        self,
+        run_id: str,
+        *,
+        scraping_summary: Dict[str, Any],
+        processing_summary: Dict[str, Any],
+        digest_summary: Dict[str, Any],
+        email_summary: Dict[str, Any],
+    ) -> Optional[PipelineRun]:
+        pipeline_run = self.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            return None
+
+        ended_at = datetime.now(timezone.utc)
+        started_at = self._coerce_datetime(pipeline_run.started_at) or ended_at
+        pipeline_run.status = "completed"
+        pipeline_run.error_message = None
+        pipeline_run.scraping_summary = scraping_summary
+        pipeline_run.processing_summary = processing_summary
+        pipeline_run.digest_summary = digest_summary
+        pipeline_run.email_summary = email_summary
+        pipeline_run.ended_at = ended_at
+        pipeline_run.duration_seconds = (ended_at - started_at).total_seconds()
+        self.session.commit()
+        return pipeline_run
+
+    def fail_pipeline_run(
+        self,
+        run_id: str,
+        *,
+        error_message: str,
+        scraping_summary: Dict[str, Any] | None = None,
+        processing_summary: Dict[str, Any] | None = None,
+        digest_summary: Dict[str, Any] | None = None,
+        email_summary: Dict[str, Any] | None = None,
+    ) -> Optional[PipelineRun]:
+        pipeline_run = self.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            return None
+
+        ended_at = datetime.now(timezone.utc)
+        started_at = self._coerce_datetime(pipeline_run.started_at) or ended_at
+        pipeline_run.status = "failed"
+        pipeline_run.error_message = error_message
+        if scraping_summary is not None:
+            pipeline_run.scraping_summary = scraping_summary
+        if processing_summary is not None:
+            pipeline_run.processing_summary = processing_summary
+        if digest_summary is not None:
+            pipeline_run.digest_summary = digest_summary
+        if email_summary is not None:
+            pipeline_run.email_summary = email_summary
+        pipeline_run.ended_at = ended_at
+        pipeline_run.duration_seconds = (ended_at - started_at).total_seconds()
+        self.session.commit()
+        return pipeline_run
+
+    def list_pipeline_runs(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+        query = self.session.query(PipelineRun).order_by(PipelineRun.started_at.desc(), PipelineRun.id)
+        total = query.count()
+        rows = query.offset(offset).limit(limit).all()
+        return {
+            "items": [self._serialize_pipeline_run(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def get_pipeline_run_detail(self, run_id: str) -> Optional[Dict[str, Any]]:
+        pipeline_run = self.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            return None
+        return self._serialize_pipeline_run(pipeline_run)
+
+    def create_newsletter_run(
+        self,
+        *,
+        pipeline_run_id: str | None,
+        profile_slug: str,
+        window_hours: int,
+        resolved_top_n: int,
+        subject: str,
+        greeting: str,
+        introduction: str,
+        sent: bool,
+        article_count: int,
+        payload_json: Dict[str, Any],
+    ) -> NewsletterRun:
+        newsletter_run = NewsletterRun(
+            id=str(uuid4()),
+            pipeline_run_id=pipeline_run_id,
+            profile_slug=profile_slug,
+            window_hours=window_hours,
+            resolved_top_n=resolved_top_n,
+            subject=subject,
+            greeting=greeting,
+            introduction=introduction,
+            sent=sent,
+            article_count=article_count,
+            payload_json=payload_json,
+            created_at=datetime.now(timezone.utc),
+        )
+        self.session.add(newsletter_run)
+        self.session.commit()
+        return newsletter_run
+
+    def mark_newsletter_run_sent(self, newsletter_run_id: str, sent: bool = True) -> Optional[NewsletterRun]:
+        newsletter_run = self.session.query(NewsletterRun).filter_by(id=newsletter_run_id).first()
+        if newsletter_run is None:
+            return None
+
+        newsletter_run.sent = sent
+        self.session.commit()
+        return newsletter_run
+
+    def list_newsletter_runs(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
+        query = self.session.query(NewsletterRun).order_by(NewsletterRun.created_at.desc(), NewsletterRun.id)
+        total = query.count()
+        rows = query.offset(offset).limit(limit).all()
+        return {
+            "items": [self._serialize_newsletter_run(row) for row in rows],
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def get_newsletter_run_detail(self, newsletter_run_id: str) -> Optional[Dict[str, Any]]:
+        newsletter_run = self.session.query(NewsletterRun).filter_by(id=newsletter_run_id).first()
+        if newsletter_run is None:
+            return None
+        return self._serialize_newsletter_run(newsletter_run)
+
     @staticmethod
     def _build_normalized_source_item(
         *,
@@ -163,6 +377,101 @@ class Repository:
         if value.tzinfo is None:
             value = value.replace(tzinfo=timezone.utc)
         return value.timestamp()
+
+    @staticmethod
+    def _coerce_datetime(value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            return value.replace(tzinfo=timezone.utc)
+        return value
+
+    @staticmethod
+    def _matches_search(title: str, query: str | None) -> bool:
+        if not query:
+            return True
+        return query.lower() in title.lower()
+
+    @staticmethod
+    def _paginate_items(items: List[Dict[str, Any]], limit: int, offset: int) -> Dict[str, Any]:
+        total = len(items)
+        paged_items = items[offset : offset + limit]
+        return {
+            "items": paged_items,
+            "total": total,
+            "limit": limit,
+            "offset": offset,
+        }
+
+    def _serialize_pipeline_run(self, run: PipelineRun) -> Dict[str, Any]:
+        return {
+            "id": run.id,
+            "trigger_source": run.trigger_source,
+            "requested_hours": run.requested_hours,
+            "requested_top_n": run.requested_top_n,
+            "profile_slug": run.profile_slug,
+            "send_email": run.send_email,
+            "status": run.status,
+            "error_message": run.error_message,
+            "scraping_summary": run.scraping_summary or {},
+            "processing_summary": run.processing_summary or {},
+            "digest_summary": run.digest_summary or {},
+            "email_summary": run.email_summary or {},
+            "started_at": self._coerce_datetime(run.started_at),
+            "ended_at": self._coerce_datetime(run.ended_at),
+            "duration_seconds": run.duration_seconds,
+        }
+
+    def _serialize_newsletter_run(self, run: NewsletterRun) -> Dict[str, Any]:
+        return {
+            "id": run.id,
+            "pipeline_run_id": run.pipeline_run_id,
+            "profile_slug": run.profile_slug,
+            "window_hours": run.window_hours,
+            "resolved_top_n": run.resolved_top_n,
+            "subject": run.subject,
+            "greeting": run.greeting,
+            "introduction": run.introduction,
+            "sent": run.sent,
+            "article_count": run.article_count,
+            "payload_json": run.payload_json,
+            "created_at": self._coerce_datetime(run.created_at),
+        }
+
+    def _serialize_source_archive_item(
+        self,
+        *,
+        source_type: str,
+        source_id: str,
+        title: str,
+        url: str,
+        published_at: datetime,
+        content_richness: str,
+        content_source_type: str,
+        enrichment_stage: str,
+        enrichment_status: str,
+        failure_reason: str | None,
+        cleaned_content: str | None,
+        description: str | None,
+        transcript: str | None = None,
+        markdown: str | None = None,
+    ) -> Dict[str, Any]:
+        return {
+            "source_type": source_type,
+            "source_id": source_id,
+            "title": title,
+            "url": url,
+            "published_at": self._coerce_datetime(published_at),
+            "content_richness": content_richness,
+            "content_source_type": content_source_type,
+            "enrichment_stage": enrichment_stage,
+            "enrichment_status": enrichment_status,
+            "failure_reason": failure_reason,
+            "cleaned_content": cleaned_content,
+            "description": description,
+            "transcript": transcript,
+            "markdown": markdown,
+        }
 
     def _collect_normalized_source_items(
         self,
@@ -1072,3 +1381,488 @@ class Repository:
             reverse=True,
         )
         return candidates
+
+    def list_source_archive(
+        self,
+        *,
+        source_type: str | None = None,
+        status: str | None = None,
+        q: str | None = None,
+        start_at: datetime | None = None,
+        end_at: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        items: List[Dict[str, Any]] = []
+
+        if source_type in (None, "youtube"):
+            query = self.session.query(YouTubeVideo)
+            if start_at is not None:
+                query = query.filter(YouTubeVideo.published_at >= start_at)
+            if end_at is not None:
+                query = query.filter(YouTubeVideo.published_at <= end_at)
+            if status:
+                query = query.filter(YouTubeVideo.transcript_status == status)
+
+            for video in query.all():
+                if not self._matches_search(video.title, q):
+                    continue
+                items.append(
+                    self._serialize_source_archive_item(
+                        source_type="youtube",
+                        source_id=video.video_id,
+                        title=video.title,
+                        url=video.url,
+                        published_at=video.published_at,
+                        content_richness=video.content_richness,
+                        content_source_type=video.content_source_type,
+                        enrichment_stage="transcript",
+                        enrichment_status=video.transcript_status,
+                        failure_reason=video.transcript_failure_reason,
+                        cleaned_content=video.cleaned_content,
+                        description=video.description,
+                        transcript=video.transcript,
+                    )
+                )
+
+        if source_type in (None, "openai"):
+            if status in (None, "not_applicable"):
+                query = self.session.query(OpenAIArticle)
+                if start_at is not None:
+                    query = query.filter(OpenAIArticle.published_at >= start_at)
+                if end_at is not None:
+                    query = query.filter(OpenAIArticle.published_at <= end_at)
+
+                for article in query.all():
+                    if not self._matches_search(article.title, q):
+                        continue
+                    items.append(
+                        self._serialize_source_archive_item(
+                            source_type="openai",
+                            source_id=article.guid,
+                            title=article.title,
+                            url=article.url or "",
+                            published_at=article.published_at,
+                            content_richness=article.content_richness,
+                            content_source_type=article.content_source_type,
+                            enrichment_stage="none",
+                            enrichment_status="not_applicable",
+                            failure_reason=None,
+                            cleaned_content=article.cleaned_content,
+                            description=article.description,
+                        )
+                    )
+
+        if source_type in (None, "anthropic"):
+            query = self.session.query(AnthropicArticle)
+            if start_at is not None:
+                query = query.filter(AnthropicArticle.published_at >= start_at)
+            if end_at is not None:
+                query = query.filter(AnthropicArticle.published_at <= end_at)
+            if status:
+                query = query.filter(AnthropicArticle.markdown_status == status)
+
+            for article in query.all():
+                if not self._matches_search(article.title, q):
+                    continue
+                items.append(
+                    self._serialize_source_archive_item(
+                        source_type="anthropic",
+                        source_id=article.guid,
+                        title=article.title,
+                        url=article.url,
+                        published_at=article.published_at,
+                        content_richness=article.content_richness,
+                        content_source_type=article.content_source_type,
+                        enrichment_stage="markdown",
+                        enrichment_status=article.markdown_status,
+                        failure_reason=article.markdown_failure_reason,
+                        cleaned_content=article.cleaned_content,
+                        description=article.description,
+                        markdown=article.markdown,
+                    )
+                )
+
+        items.sort(key=lambda item: self._normalize_datetime(item["published_at"]), reverse=True)
+        return self._paginate_items(items, limit=limit, offset=offset)
+
+    def get_source_archive_item(self, source_type: str, source_id: str) -> Optional[Dict[str, Any]]:
+        if source_type == "youtube":
+            video = self.session.query(YouTubeVideo).filter_by(video_id=source_id).first()
+            if video is None:
+                return None
+            return self._serialize_source_archive_item(
+                source_type="youtube",
+                source_id=video.video_id,
+                title=video.title,
+                url=video.url,
+                published_at=video.published_at,
+                content_richness=video.content_richness,
+                content_source_type=video.content_source_type,
+                enrichment_stage="transcript",
+                enrichment_status=video.transcript_status,
+                failure_reason=video.transcript_failure_reason,
+                cleaned_content=video.cleaned_content,
+                description=video.description,
+                transcript=video.transcript,
+            )
+
+        if source_type == "openai":
+            article = self.session.query(OpenAIArticle).filter_by(guid=source_id).first()
+            if article is None:
+                return None
+            return self._serialize_source_archive_item(
+                source_type="openai",
+                source_id=article.guid,
+                title=article.title,
+                url=article.url or "",
+                published_at=article.published_at,
+                content_richness=article.content_richness,
+                content_source_type=article.content_source_type,
+                enrichment_stage="none",
+                enrichment_status="not_applicable",
+                failure_reason=None,
+                cleaned_content=article.cleaned_content,
+                description=article.description,
+            )
+
+        if source_type == "anthropic":
+            article = self.session.query(AnthropicArticle).filter_by(guid=source_id).first()
+            if article is None:
+                return None
+            return self._serialize_source_archive_item(
+                source_type="anthropic",
+                source_id=article.guid,
+                title=article.title,
+                url=article.url,
+                published_at=article.published_at,
+                content_richness=article.content_richness,
+                content_source_type=article.content_source_type,
+                enrichment_stage="markdown",
+                enrichment_status=article.markdown_status,
+                failure_reason=article.markdown_failure_reason,
+                cleaned_content=article.cleaned_content,
+                description=article.description,
+                markdown=article.markdown,
+            )
+
+        return None
+
+    def list_story_archive(
+        self,
+        *,
+        status: str | None = None,
+        source_type: str | None = None,
+        q: str | None = None,
+        start_at: datetime | None = None,
+        end_at: datetime | None = None,
+        limit: int = 50,
+        offset: int = 0,
+    ) -> Dict[str, Any]:
+        query = self.session.query(Story)
+        if status:
+            query = query.filter(Story.story_digest_status == status)
+        if source_type:
+            query = query.filter(Story.representative_source_type == source_type)
+        if start_at is not None:
+            query = query.filter(Story.representative_published_at >= start_at)
+        if end_at is not None:
+            query = query.filter(Story.representative_published_at <= end_at)
+
+        stories = query.order_by(Story.representative_published_at.desc()).all()
+        if q:
+            stories = [story for story in stories if self._matches_search(story.title, q)]
+
+        total = len(stories)
+        paged_stories = stories[offset : offset + limit]
+        if not paged_stories:
+            return {"items": [], "total": total, "limit": limit, "offset": offset}
+
+        story_ids = [story.id for story in paged_stories]
+        links_by_story = self._get_story_source_links(story_ids)
+        source_refs = [
+            (link.source_type, link.source_id)
+            for story_links in links_by_story.values()
+            for link in story_links
+        ]
+        link_map = {
+            build_source_key(link.source_type, link.source_id): link
+            for story_links in links_by_story.values()
+            for link in story_links
+        }
+        source_map = self._get_story_digest_source_map(source_refs, link_map)
+
+        digest_rows = (
+            self.session.query(StoryDigest, Story)
+            .join(Story, Story.id == StoryDigest.story_id)
+            .filter(StoryDigest.story_id.in_(story_ids))
+            .all()
+        )
+        digest_map = {
+            story_digest.story_id: story_digest
+            for story_digest, story in digest_rows
+            if story_digest.generated_input_hash == story.story_digest_input_hash
+        }
+
+        items: List[Dict[str, Any]] = []
+        for story in paged_stories:
+            story_links = links_by_story.get(story.id, [])
+            current_digest = digest_map.get(story.id)
+            source_types: List[str] = []
+            for link in story_links:
+                if link.source_type not in source_types:
+                    source_types.append(link.source_type)
+
+            representative = source_map.get(
+                build_source_key(story.representative_source_type, story.representative_source_id)
+            )
+            items.append(
+                {
+                    "story_id": story.id,
+                    "title": story.title,
+                    "story_digest_status": story.story_digest_status,
+                    "story_digest_failure_reason": story.story_digest_failure_reason,
+                    "representative_source_type": story.representative_source_type,
+                    "representative_source_id": story.representative_source_id,
+                    "representative_url": representative.url if representative else "",
+                    "representative_published_at": self._coerce_datetime(
+                        story.representative_published_at
+                    ),
+                    "source_count": story.source_count,
+                    "source_types": source_types,
+                    "digest_title": current_digest.title if current_digest else None,
+                    "digest_summary": current_digest.summary if current_digest else None,
+                    "digest_why_it_matters": current_digest.why_it_matters if current_digest else None,
+                }
+            )
+
+        return {"items": items, "total": total, "limit": limit, "offset": offset}
+
+    def get_story_archive_item(self, story_id: str) -> Optional[Dict[str, Any]]:
+        story = self.session.query(Story).filter_by(id=story_id).first()
+        if story is None:
+            return None
+
+        current_digest = self.get_current_story_digest(story_id)
+        links_by_story = self._get_story_source_links([story_id])
+        story_links = links_by_story.get(story_id, [])
+        source_refs = [(link.source_type, link.source_id) for link in story_links]
+        link_map = {
+            build_source_key(link.source_type, link.source_id): link for link in story_links
+        }
+        source_map = self._get_story_digest_source_map(source_refs, link_map)
+
+        sources: List[Dict[str, Any]] = []
+        source_types: List[str] = []
+        for link in story_links:
+            if link.source_type not in source_types:
+                source_types.append(link.source_type)
+
+            source = source_map.get(build_source_key(link.source_type, link.source_id))
+            if source is None:
+                continue
+            sources.append(
+                {
+                    "source_type": source.source_type,
+                    "source_id": source.source_id,
+                    "title": source.raw_title,
+                    "url": source.url,
+                    "published_at": self._coerce_datetime(source.published_at),
+                    "content_richness": source.content_richness,
+                    "content_source_type": source.content_source_type,
+                    "similarity_to_primary": source.similarity_to_primary,
+                    "is_primary": source.is_primary,
+                }
+            )
+
+        representative = source_map.get(
+            build_source_key(story.representative_source_type, story.representative_source_id)
+        )
+        return {
+            "story_id": story.id,
+            "title": story.title,
+            "story_digest_status": story.story_digest_status,
+            "story_digest_failure_reason": story.story_digest_failure_reason,
+            "story_digest_last_processed_at": self._coerce_datetime(
+                story.story_digest_last_processed_at
+            ),
+            "representative_source_type": story.representative_source_type,
+            "representative_source_id": story.representative_source_id,
+            "representative_url": representative.url if representative else "",
+            "representative_published_at": self._coerce_datetime(story.representative_published_at),
+            "source_count": story.source_count,
+            "source_types": source_types,
+            "digest": (
+                {
+                    "title": current_digest.title,
+                    "summary": current_digest.summary,
+                    "why_it_matters": current_digest.why_it_matters,
+                    "disagreement_notes": current_digest.disagreement_notes,
+                    "synthesis_mode": current_digest.synthesis_mode,
+                    "available_source_count": current_digest.available_source_count,
+                    "used_source_count": current_digest.used_source_count,
+                    "generated_input_hash": current_digest.generated_input_hash,
+                }
+                if current_digest
+                else None
+            ),
+            "sources": sources,
+        }
+
+    def get_failure_summary(self, hours: int = 168, limit: int = 20) -> Dict[str, Any]:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        items: List[Dict[str, Any]] = []
+
+        youtube_rows = (
+            self.session.query(YouTubeVideo)
+            .filter(YouTubeVideo.published_at >= cutoff_time)
+            .filter(YouTubeVideo.transcript_status.in_(("failed", "unavailable")))
+            .all()
+        )
+        anthropic_rows = (
+            self.session.query(AnthropicArticle)
+            .filter(AnthropicArticle.published_at >= cutoff_time)
+            .filter(AnthropicArticle.markdown_status.in_(("failed", "unavailable")))
+            .all()
+        )
+        story_rows = (
+            self.session.query(Story)
+            .filter(Story.representative_published_at >= cutoff_time)
+            .filter(Story.story_digest_status == "failed")
+            .all()
+        )
+        pipeline_rows = (
+            self.session.query(PipelineRun)
+            .filter(PipelineRun.started_at >= cutoff_time)
+            .filter(PipelineRun.status == "failed")
+            .all()
+        )
+
+        for video in youtube_rows:
+            items.append(
+                {
+                    "kind": "source",
+                    "category": "youtube_transcript",
+                    "status": video.transcript_status,
+                    "title": video.title,
+                    "reference_id": video.video_id,
+                    "source_type": "youtube",
+                    "failure_reason": video.transcript_failure_reason,
+                    "occurred_at": self._coerce_datetime(video.published_at),
+                }
+            )
+
+        for article in anthropic_rows:
+            items.append(
+                {
+                    "kind": "source",
+                    "category": "anthropic_markdown",
+                    "status": article.markdown_status,
+                    "title": article.title,
+                    "reference_id": article.guid,
+                    "source_type": "anthropic",
+                    "failure_reason": article.markdown_failure_reason,
+                    "occurred_at": self._coerce_datetime(article.published_at),
+                }
+            )
+
+        for story in story_rows:
+            items.append(
+                {
+                    "kind": "story",
+                    "category": "story_digest",
+                    "status": story.story_digest_status,
+                    "title": story.title,
+                    "reference_id": story.id,
+                    "source_type": story.representative_source_type,
+                    "failure_reason": story.story_digest_failure_reason,
+                    "occurred_at": self._coerce_datetime(story.representative_published_at),
+                }
+            )
+
+        for run in pipeline_rows:
+            items.append(
+                {
+                    "kind": "pipeline",
+                    "category": "pipeline_run",
+                    "status": run.status,
+                    "title": f"{run.trigger_source} pipeline run",
+                    "reference_id": run.id,
+                    "source_type": run.trigger_source,
+                    "failure_reason": run.error_message,
+                    "occurred_at": self._coerce_datetime(run.started_at),
+                }
+            )
+
+        items.sort(key=lambda item: self._normalize_datetime(item["occurred_at"]), reverse=True)
+        summary = {
+            "youtube_failed": sum(1 for row in youtube_rows if row.transcript_status == "failed"),
+            "youtube_unavailable": sum(
+                1 for row in youtube_rows if row.transcript_status == "unavailable"
+            ),
+            "anthropic_failed": sum(
+                1 for row in anthropic_rows if row.markdown_status == "failed"
+            ),
+            "anthropic_unavailable": sum(
+                1 for row in anthropic_rows if row.markdown_status == "unavailable"
+            ),
+            "story_digest_failed": len(story_rows),
+            "pipeline_failed": len(pipeline_rows),
+        }
+        return {
+            "summary": summary,
+            "items": items[:limit],
+            "hours": hours,
+        }
+
+    def get_dashboard_overview(self, hours: int = 24) -> Dict[str, Any]:
+        cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
+        latest_pipeline = (
+            self.session.query(PipelineRun)
+            .order_by(PipelineRun.started_at.desc(), PipelineRun.id)
+            .first()
+        )
+        latest_newsletter = (
+            self.session.query(NewsletterRun)
+            .order_by(NewsletterRun.created_at.desc(), NewsletterRun.id)
+            .first()
+        )
+
+        source_counts = {
+            "youtube": self.session.query(YouTubeVideo)
+            .filter(YouTubeVideo.published_at >= cutoff_time)
+            .count(),
+            "openai": self.session.query(OpenAIArticle)
+            .filter(OpenAIArticle.published_at >= cutoff_time)
+            .count(),
+            "anthropic": self.session.query(AnthropicArticle)
+            .filter(AnthropicArticle.published_at >= cutoff_time)
+            .count(),
+        }
+        story_rows = (
+            self.session.query(Story).filter(Story.representative_published_at >= cutoff_time).all()
+        )
+        digest_counts = {
+            "completed": sum(1 for story in story_rows if story.story_digest_status == "completed"),
+            "pending": sum(1 for story in story_rows if story.story_digest_status == "pending"),
+            "failed": sum(1 for story in story_rows if story.story_digest_status == "failed"),
+        }
+        story_counts = {
+            "total": len(story_rows),
+            "multi_source": sum(1 for story in story_rows if story.source_count > 1),
+            "singleton": sum(1 for story in story_rows if story.source_count == 1),
+        }
+
+        return {
+            "hours": hours,
+            "source_counts": source_counts,
+            "story_counts": story_counts,
+            "digest_counts": digest_counts,
+            "failure_summary": self.get_failure_summary(hours=max(hours, 168), limit=5),
+            "latest_pipeline_run": (
+                self._serialize_pipeline_run(latest_pipeline) if latest_pipeline else None
+            ),
+            "latest_newsletter_run": (
+                self._serialize_newsletter_run(latest_newsletter) if latest_newsletter else None
+            ),
+        }
