@@ -147,6 +147,7 @@ def test_dashboard_api_overview_archive_and_run_endpoints():
         stories = client.get("/api/stories?q=OpenAI")
         story_detail = client.get("/api/stories/story-1")
         pipeline_runs = client.get("/api/pipeline-runs")
+        worker_status = client.get("/api/worker-status")
         newsletter_runs = client.get("/api/newsletter-runs")
 
         assert health.status_code == 204
@@ -162,6 +163,8 @@ def test_dashboard_api_overview_archive_and_run_endpoints():
         assert len(story_detail.json()["sources"]) == 2
         assert pipeline_runs.status_code == 200
         assert pipeline_runs.json()["total"] == 1
+        assert worker_status.status_code == 200
+        assert worker_status.json() is None
         assert newsletter_runs.status_code == 200
         assert newsletter_runs.json()["total"] == 1
     finally:
@@ -177,14 +180,20 @@ def test_create_pipeline_run_endpoint_conflict_and_queue(monkeypatch):
             "app.api.main.get_runtime_user_profile",
             lambda repo=None: {"slug": "default"},
         )
-        monkeypatch.setattr("app.api.main.execute_pipeline_run", lambda run_id, hours, top_n: None)
 
         first = client.post("/api/pipeline-runs", json={"hours": 24, "top_n": 5})
         second = client.post("/api/pipeline-runs", json={"hours": 24, "top_n": 5})
+        cancel = client.post(f"/api/pipeline-runs/{first.json()['id']}/cancel")
+        third = client.post("/api/pipeline-runs", json={"hours": 24, "top_n": 5})
 
         assert first.status_code == 202
         assert first.json()["status"] == "queued"
+        assert first.json()["run_type"] == "full_pipeline"
+        assert first.json()["stage_runs"] == []
         assert second.status_code == 409
+        assert cancel.status_code == 200
+        assert cancel.json()["status"] == "cancelled"
+        assert third.status_code == 202
     finally:
         seed_repo.close()
         seed_session.close()

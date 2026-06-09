@@ -9,6 +9,7 @@ vi.mock("../api", () => ({
   api: {
     getPipelineRuns: vi.fn(),
     getPipelineRun: vi.fn(),
+    cancelPipelineRun: vi.fn(),
   },
 }));
 
@@ -21,6 +22,8 @@ describe("RunsPage", () => {
         {
           id: "run-1",
           trigger_source: "api",
+          run_type: "full_pipeline",
+          requested_stage: null,
           requested_hours: 24,
           requested_top_n: null,
           profile_slug: "default",
@@ -31,9 +34,11 @@ describe("RunsPage", () => {
           processing_summary: { youtube: { processed: 1 } },
           digest_summary: { processed: 1 },
           email_summary: { success: true, sent: false },
+          queued_at: "2026-04-27T09:59:58Z",
           started_at: "2026-04-27T10:00:00Z",
           ended_at: "2026-04-27T10:00:05Z",
           duration_seconds: 5,
+          stage_runs: [],
         },
       ],
       total: 1,
@@ -43,6 +48,8 @@ describe("RunsPage", () => {
     mockedApi.getPipelineRun.mockResolvedValue({
       id: "run-1",
       trigger_source: "api",
+      run_type: "full_pipeline",
+      requested_stage: null,
       requested_hours: 24,
       requested_top_n: null,
       profile_slug: "default",
@@ -53,9 +60,11 @@ describe("RunsPage", () => {
       processing_summary: { youtube: { processed: 1 } },
       digest_summary: { processed: 1 },
       email_summary: { success: true, sent: false },
+      queued_at: "2026-04-27T09:59:58Z",
       started_at: "2026-04-27T10:00:00Z",
       ended_at: "2026-04-27T10:00:05Z",
       duration_seconds: 5,
+      stage_runs: [],
     });
   });
 

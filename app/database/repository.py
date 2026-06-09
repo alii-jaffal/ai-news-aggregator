@@ -25,10 +25,12 @@ from .models import (
     NewsletterRun,
     OpenAIArticle,
     PipelineRun,
+    PipelineStageRun,
     Story,
     StoryDigest,
     StorySourceLink,
     UserProfile,
+    WorkerHeartbeat,
     YouTubeVideo,
 )
 
@@ -124,6 +126,8 @@ class Repository:
         self,
         *,
         trigger_source: str,
+        run_type: str = "full_pipeline",
+        requested_stage: str | None = None,
         requested_hours: int,
         requested_top_n: int | None,
         profile_slug: str,
@@ -133,6 +137,8 @@ class Repository:
         pipeline_run = PipelineRun(
             id=str(uuid4()),
             trigger_source=trigger_source,
+            run_type=run_type,
+            requested_stage=requested_stage,
             requested_hours=requested_hours,
             requested_top_n=requested_top_n,
             profile_slug=profile_slug,
@@ -142,7 +148,8 @@ class Repository:
             processing_summary={},
             digest_summary={},
             email_summary={},
-            started_at=datetime.now(timezone.utc),
+            queued_at=datetime.now(timezone.utc),
+            started_at=datetime.now(timezone.utc) if status == "running" else None,
         )
         self.session.add(pipeline_run)
         self.session.commit()
@@ -151,14 +158,89 @@ class Repository:
     def get_pipeline_run(self, run_id: str) -> Optional[PipelineRun]:
         return self.session.query(PipelineRun).filter_by(id=run_id).first()
 
+    def is_pipeline_run_cancelled(self, run_id: str) -> bool:
+        pipeline_run = self.get_pipeline_run(run_id)
+        return pipeline_run is not None and pipeline_run.status == "cancelled"
+
     def mark_pipeline_run_running(self, run_id: str) -> Optional[PipelineRun]:
         pipeline_run = self.get_pipeline_run(run_id)
         if pipeline_run is None:
             return None
 
+        if pipeline_run.status == "cancelled":
+            return pipeline_run
+
         pipeline_run.status = "running"
-        if pipeline_run.started_at is None:
-            pipeline_run.started_at = datetime.now(timezone.utc)
+        pipeline_run.started_at = datetime.now(timezone.utc)
+        self.session.commit()
+        return pipeline_run
+
+    def claim_next_queued_pipeline_run(self) -> Optional[PipelineRun]:
+        pipeline_run = (
+            self.session.query(PipelineRun)
+            .filter(PipelineRun.status == "queued")
+            .order_by(PipelineRun.queued_at.asc(), PipelineRun.id.asc())
+            .first()
+        )
+        if pipeline_run is None:
+            return None
+
+        if pipeline_run.status == "cancelled":
+            self.session.commit()
+            return pipeline_run
+
+        pipeline_run.status = "running"
+        pipeline_run.started_at = datetime.now(timezone.utc)
+        self.session.commit()
+        return pipeline_run
+
+    def cancel_pipeline_run(
+        self,
+        run_id: str,
+        *,
+        reason: str = "Cancelled from dashboard",
+    ) -> Optional[PipelineRun]:
+        pipeline_run = self.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            return None
+
+        if pipeline_run.status in ("completed", "failed"):
+            return pipeline_run
+
+        ended_at = datetime.now(timezone.utc)
+        started_at = (
+            self._coerce_datetime(pipeline_run.started_at)
+            or self._coerce_datetime(pipeline_run.queued_at)
+            or ended_at
+        )
+        pipeline_run.status = "cancelled"
+        pipeline_run.error_message = reason
+        pipeline_run.ended_at = ended_at
+        pipeline_run.duration_seconds = (ended_at - started_at).total_seconds()
+
+        active_stage_runs = (
+            self.session.query(PipelineStageRun)
+            .filter_by(pipeline_run_id=run_id, status="running")
+            .all()
+        )
+        for stage_run in active_stage_runs:
+            stage_started_at = self._coerce_datetime(stage_run.started_at) or ended_at
+            stage_run.status = "cancelled"
+            stage_run.error_message = reason
+            stage_run.ended_at = ended_at
+            stage_run.duration_seconds = (ended_at - stage_started_at).total_seconds()
+
+        active_heartbeats = (
+            self.session.query(WorkerHeartbeat)
+            .filter_by(current_run_id=run_id)
+            .all()
+        )
+        for heartbeat in active_heartbeats:
+            heartbeat.status = "idle"
+            heartbeat.current_run_id = None
+            heartbeat.current_stage_name = None
+            heartbeat.last_heartbeat_at = ended_at
+
         self.session.commit()
         return pipeline_run
 
@@ -174,6 +256,18 @@ class Repository:
         pipeline_run = self.get_pipeline_run(run_id)
         if pipeline_run is None:
             return None
+
+        if pipeline_run.status == "cancelled":
+            if scraping_summary is not None:
+                pipeline_run.scraping_summary = scraping_summary
+            if processing_summary is not None:
+                pipeline_run.processing_summary = processing_summary
+            if digest_summary is not None:
+                pipeline_run.digest_summary = digest_summary
+            if email_summary is not None:
+                pipeline_run.email_summary = email_summary
+            self.session.commit()
+            return pipeline_run
 
         if scraping_summary is not None:
             pipeline_run.scraping_summary = scraping_summary
@@ -201,7 +295,25 @@ class Repository:
             return None
 
         ended_at = datetime.now(timezone.utc)
-        started_at = self._coerce_datetime(pipeline_run.started_at) or ended_at
+        started_at = (
+            self._coerce_datetime(pipeline_run.started_at)
+            or self._coerce_datetime(pipeline_run.queued_at)
+            or ended_at
+        )
+        if pipeline_run.status == "cancelled":
+            pipeline_run.scraping_summary = scraping_summary
+            pipeline_run.processing_summary = processing_summary
+            pipeline_run.digest_summary = digest_summary
+            pipeline_run.email_summary = email_summary
+            if pipeline_run.ended_at is None:
+                pipeline_run.ended_at = ended_at
+            if pipeline_run.duration_seconds is None:
+                pipeline_run.duration_seconds = (
+                    (pipeline_run.ended_at or ended_at) - started_at
+                ).total_seconds()
+            self.session.commit()
+            return pipeline_run
+
         pipeline_run.status = "completed"
         pipeline_run.error_message = None
         pipeline_run.scraping_summary = scraping_summary
@@ -228,7 +340,29 @@ class Repository:
             return None
 
         ended_at = datetime.now(timezone.utc)
-        started_at = self._coerce_datetime(pipeline_run.started_at) or ended_at
+        started_at = (
+            self._coerce_datetime(pipeline_run.started_at)
+            or self._coerce_datetime(pipeline_run.queued_at)
+            or ended_at
+        )
+        if pipeline_run.status == "cancelled":
+            if scraping_summary is not None:
+                pipeline_run.scraping_summary = scraping_summary
+            if processing_summary is not None:
+                pipeline_run.processing_summary = processing_summary
+            if digest_summary is not None:
+                pipeline_run.digest_summary = digest_summary
+            if email_summary is not None:
+                pipeline_run.email_summary = email_summary
+            if pipeline_run.ended_at is None:
+                pipeline_run.ended_at = ended_at
+            if pipeline_run.duration_seconds is None:
+                pipeline_run.duration_seconds = (
+                    (pipeline_run.ended_at or ended_at) - started_at
+                ).total_seconds()
+            self.session.commit()
+            return pipeline_run
+
         pipeline_run.status = "failed"
         pipeline_run.error_message = error_message
         if scraping_summary is not None:
@@ -244,8 +378,161 @@ class Repository:
         self.session.commit()
         return pipeline_run
 
+    def start_pipeline_stage_run(
+        self,
+        pipeline_run_id: str,
+        *,
+        stage_name: str,
+        retry_of_stage_run_id: str | None = None,
+    ) -> PipelineStageRun:
+        stage_run = PipelineStageRun(
+            id=str(uuid4()),
+            pipeline_run_id=pipeline_run_id,
+            stage_name=stage_name,
+            status="running",
+            summary_json={},
+            retry_of_stage_run_id=retry_of_stage_run_id,
+            started_at=datetime.now(timezone.utc),
+        )
+        self.session.add(stage_run)
+        self.session.commit()
+        return stage_run
+
+    def complete_pipeline_stage_run(
+        self,
+        stage_run_id: str,
+        *,
+        summary_json: Dict[str, Any] | None = None,
+    ) -> Optional[PipelineStageRun]:
+        stage_run = self.session.query(PipelineStageRun).filter_by(id=stage_run_id).first()
+        if stage_run is None:
+            return None
+
+        ended_at = datetime.now(timezone.utc)
+        started_at = self._coerce_datetime(stage_run.started_at) or ended_at
+        if stage_run.status == "cancelled":
+            if summary_json is not None:
+                stage_run.summary_json = summary_json
+            self.session.commit()
+            return stage_run
+
+        stage_run.status = "completed"
+        stage_run.error_message = None
+        if summary_json is not None:
+            stage_run.summary_json = summary_json
+        stage_run.ended_at = ended_at
+        stage_run.duration_seconds = (ended_at - started_at).total_seconds()
+        self.session.commit()
+        return stage_run
+
+    def fail_pipeline_stage_run(
+        self,
+        stage_run_id: str,
+        *,
+        error_message: str,
+        summary_json: Dict[str, Any] | None = None,
+    ) -> Optional[PipelineStageRun]:
+        stage_run = self.session.query(PipelineStageRun).filter_by(id=stage_run_id).first()
+        if stage_run is None:
+            return None
+
+        ended_at = datetime.now(timezone.utc)
+        started_at = self._coerce_datetime(stage_run.started_at) or ended_at
+        if stage_run.status == "cancelled":
+            if summary_json is not None:
+                stage_run.summary_json = summary_json
+            self.session.commit()
+            return stage_run
+
+        stage_run.status = "failed"
+        stage_run.error_message = error_message
+        if summary_json is not None:
+            stage_run.summary_json = summary_json
+        stage_run.ended_at = ended_at
+        stage_run.duration_seconds = (ended_at - started_at).total_seconds()
+        self.session.commit()
+        return stage_run
+
+    def cancel_pipeline_stage_run(
+        self,
+        stage_run_id: str,
+        *,
+        error_message: str = "Cancelled from dashboard",
+        summary_json: Dict[str, Any] | None = None,
+    ) -> Optional[PipelineStageRun]:
+        stage_run = self.session.query(PipelineStageRun).filter_by(id=stage_run_id).first()
+        if stage_run is None:
+            return None
+
+        ended_at = datetime.now(timezone.utc)
+        started_at = self._coerce_datetime(stage_run.started_at) or ended_at
+        stage_run.status = "cancelled"
+        stage_run.error_message = error_message
+        if summary_json is not None:
+            stage_run.summary_json = summary_json
+        stage_run.ended_at = ended_at
+        stage_run.duration_seconds = (ended_at - started_at).total_seconds()
+        self.session.commit()
+        return stage_run
+
+    def list_pipeline_stage_runs(self, pipeline_run_id: str) -> List[Dict[str, Any]]:
+        rows = (
+            self.session.query(PipelineStageRun)
+            .filter_by(pipeline_run_id=pipeline_run_id)
+            .order_by(PipelineStageRun.started_at.asc(), PipelineStageRun.id.asc())
+            .all()
+        )
+        return [self._serialize_pipeline_stage_run(row) for row in rows]
+
+    def upsert_worker_heartbeat(
+        self,
+        worker_name: str,
+        *,
+        status: str,
+        current_run_id: str | None = None,
+        current_stage_name: str | None = None,
+    ) -> WorkerHeartbeat:
+        heartbeat = self.session.query(WorkerHeartbeat).filter_by(worker_name=worker_name).first()
+        now = datetime.now(timezone.utc)
+        if heartbeat is None:
+            heartbeat = WorkerHeartbeat(
+                worker_name=worker_name,
+                started_at=now,
+            )
+            self.session.add(heartbeat)
+
+        heartbeat.status = status
+        heartbeat.current_run_id = current_run_id
+        heartbeat.current_stage_name = current_stage_name
+        heartbeat.last_heartbeat_at = now
+        self.session.commit()
+        return heartbeat
+
+    def get_latest_worker_heartbeat(self) -> Optional[WorkerHeartbeat]:
+        return (
+            self.session.query(WorkerHeartbeat)
+            .order_by(WorkerHeartbeat.last_heartbeat_at.desc(), WorkerHeartbeat.worker_name.asc())
+            .first()
+        )
+
+    def get_worker_status(self) -> Dict[str, Any] | None:
+        heartbeat = self.get_latest_worker_heartbeat()
+        if heartbeat is None:
+            return None
+        return self._serialize_worker_heartbeat(heartbeat)
+
+    def get_pipeline_queue_summary(self) -> Dict[str, int]:
+        return {
+            "queued_runs": self.session.query(PipelineRun)
+            .filter(PipelineRun.status == "queued")
+            .count(),
+            "running_runs": self.session.query(PipelineRun)
+            .filter(PipelineRun.status == "running")
+            .count(),
+        }
+
     def list_pipeline_runs(self, limit: int = 20, offset: int = 0) -> Dict[str, Any]:
-        query = self.session.query(PipelineRun).order_by(PipelineRun.started_at.desc(), PipelineRun.id)
+        query = self.session.query(PipelineRun).order_by(PipelineRun.queued_at.desc(), PipelineRun.id)
         total = query.count()
         rows = query.offset(offset).limit(limit).all()
         return {
@@ -259,7 +546,7 @@ class Repository:
         pipeline_run = self.get_pipeline_run(run_id)
         if pipeline_run is None:
             return None
-        return self._serialize_pipeline_run(pipeline_run)
+        return self._serialize_pipeline_run(pipeline_run, include_stage_runs=True)
 
     def create_newsletter_run(
         self,
@@ -403,10 +690,17 @@ class Repository:
             "offset": offset,
         }
 
-    def _serialize_pipeline_run(self, run: PipelineRun) -> Dict[str, Any]:
+    def _serialize_pipeline_run(
+        self,
+        run: PipelineRun,
+        *,
+        include_stage_runs: bool = False,
+    ) -> Dict[str, Any]:
         return {
             "id": run.id,
             "trigger_source": run.trigger_source,
+            "run_type": run.run_type,
+            "requested_stage": run.requested_stage,
             "requested_hours": run.requested_hours,
             "requested_top_n": run.requested_top_n,
             "profile_slug": run.profile_slug,
@@ -417,9 +711,40 @@ class Repository:
             "processing_summary": run.processing_summary or {},
             "digest_summary": run.digest_summary or {},
             "email_summary": run.email_summary or {},
+            "queued_at": self._coerce_datetime(run.queued_at),
             "started_at": self._coerce_datetime(run.started_at),
             "ended_at": self._coerce_datetime(run.ended_at),
             "duration_seconds": run.duration_seconds,
+            "stage_runs": (
+                self.list_pipeline_stage_runs(run.id)
+                if include_stage_runs
+                else []
+            ),
+        }
+
+    def _serialize_pipeline_stage_run(self, run: PipelineStageRun) -> Dict[str, Any]:
+        return {
+            "id": run.id,
+            "pipeline_run_id": run.pipeline_run_id,
+            "stage_name": run.stage_name,
+            "status": run.status,
+            "summary_json": run.summary_json or {},
+            "error_message": run.error_message,
+            "retry_of_stage_run_id": run.retry_of_stage_run_id,
+            "started_at": self._coerce_datetime(run.started_at),
+            "ended_at": self._coerce_datetime(run.ended_at),
+            "duration_seconds": run.duration_seconds,
+        }
+
+    def _serialize_worker_heartbeat(self, heartbeat: WorkerHeartbeat) -> Dict[str, Any]:
+        return {
+            "worker_name": heartbeat.worker_name,
+            "status": heartbeat.status,
+            "current_run_id": heartbeat.current_run_id,
+            "current_stage_name": heartbeat.current_stage_name,
+            "last_heartbeat_at": self._coerce_datetime(heartbeat.last_heartbeat_at),
+            "started_at": self._coerce_datetime(heartbeat.started_at),
+            "updated_at": self._coerce_datetime(heartbeat.updated_at),
         }
 
     def _serialize_newsletter_run(self, run: NewsletterRun) -> Dict[str, Any]:
@@ -1731,12 +2056,12 @@ class Repository:
             .filter(Story.story_digest_status == "failed")
             .all()
         )
-        pipeline_rows = (
-            self.session.query(PipelineRun)
-            .filter(PipelineRun.started_at >= cutoff_time)
-            .filter(PipelineRun.status == "failed")
-            .all()
-        )
+        pipeline_rows = [
+            run
+            for run in self.session.query(PipelineRun).filter(PipelineRun.status == "failed").all()
+            if (self._coerce_datetime(run.started_at) or self._coerce_datetime(run.queued_at) or cutoff_time)
+            >= cutoff_time
+        ]
 
         for video in youtube_rows:
             items.append(
@@ -1781,6 +2106,7 @@ class Repository:
             )
 
         for run in pipeline_rows:
+            occurred_at = self._coerce_datetime(run.started_at) or self._coerce_datetime(run.queued_at)
             items.append(
                 {
                     "kind": "pipeline",
@@ -1790,7 +2116,7 @@ class Repository:
                     "reference_id": run.id,
                     "source_type": run.trigger_source,
                     "failure_reason": run.error_message,
-                    "occurred_at": self._coerce_datetime(run.started_at),
+                    "occurred_at": occurred_at,
                 }
             )
 
@@ -1819,7 +2145,7 @@ class Repository:
         cutoff_time = datetime.now(timezone.utc) - timedelta(hours=hours)
         latest_pipeline = (
             self.session.query(PipelineRun)
-            .order_by(PipelineRun.started_at.desc(), PipelineRun.id)
+            .order_by(PipelineRun.queued_at.desc(), PipelineRun.id)
             .first()
         )
         latest_newsletter = (
@@ -1858,6 +2184,8 @@ class Repository:
             "source_counts": source_counts,
             "story_counts": story_counts,
             "digest_counts": digest_counts,
+            "queue_summary": self.get_pipeline_queue_summary(),
+            "worker_status": self.get_worker_status(),
             "failure_summary": self.get_failure_summary(hours=max(hours, 168), limit=5),
             "latest_pipeline_run": (
                 self._serialize_pipeline_run(latest_pipeline) if latest_pipeline else None

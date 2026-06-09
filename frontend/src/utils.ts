@@ -28,7 +28,7 @@ export function toneForStatus(
   if (["running", "pending", "queued"].includes(status)) {
     return "info";
   }
-  if (["unavailable", "skipped"].includes(status)) {
+  if (["unavailable", "skipped", "cancelled"].includes(status)) {
     return "warning";
   }
   if (["failed", "error"].includes(status)) {

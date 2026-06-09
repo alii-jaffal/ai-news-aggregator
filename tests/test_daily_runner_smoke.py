@@ -8,11 +8,14 @@ class FakePipelineRepository:
         self.progress_updates = []
         self.completed = None
         self.failed = None
+        self.stage_runs = []
 
     def create_pipeline_run(
         self,
         *,
         trigger_source,
+        run_type="full_pipeline",
+        requested_stage=None,
         requested_hours,
         requested_top_n,
         profile_slug,
@@ -25,6 +28,8 @@ class FakePipelineRepository:
             {
                 "id": "run-1",
                 "trigger_source": trigger_source,
+                "run_type": run_type,
+                "requested_stage": requested_stage,
                 "requested_hours": requested_hours,
                 "requested_top_n": requested_top_n,
                 "profile_slug": profile_slug,
@@ -51,8 +56,90 @@ class FakePipelineRepository:
         return self.runs.get(run_id)
 
     def fail_pipeline_run(self, run_id, **kwargs):
+        if self.runs[run_id].status == "cancelled":
+            self.failed = (run_id, kwargs)
+            return self.runs.get(run_id)
         self.failed = (run_id, kwargs)
         return self.runs.get(run_id)
+
+    def is_pipeline_run_cancelled(self, run_id):
+        run = self.runs.get(run_id)
+        return run is not None and run.status == "cancelled"
+
+    def cancel_pipeline_run(self, run_id, *, reason="Cancelled from dashboard"):
+        run = self.runs.get(run_id)
+        if run is None:
+            return None
+        run.status = "cancelled"
+        for stage_run in self.stage_runs:
+            if stage_run["status"] == "running":
+                stage_run["status"] = "cancelled"
+                stage_run["error_message"] = reason
+        return run
+
+    def start_pipeline_stage_run(self, pipeline_run_id, *, stage_name, retry_of_stage_run_id=None):
+        stage_run = type(
+            "PipelineStageRun",
+            (),
+            {
+                "id": f"stage-{len(self.stage_runs) + 1}",
+                "pipeline_run_id": pipeline_run_id,
+                "stage_name": stage_name,
+                "status": "running",
+                "retry_of_stage_run_id": retry_of_stage_run_id,
+            },
+        )()
+        self.stage_runs.append(
+            {
+                "id": stage_run.id,
+                "stage_name": stage_name,
+                "status": "running",
+                "summary_json": {},
+                "error_message": None,
+            }
+        )
+        return stage_run
+
+    def complete_pipeline_stage_run(self, stage_run_id, *, summary_json=None):
+        for stage_run in self.stage_runs:
+            if stage_run["id"] == stage_run_id:
+                stage_run["status"] = "completed"
+                stage_run["summary_json"] = summary_json or {}
+                return stage_run
+        return None
+
+    def fail_pipeline_stage_run(self, stage_run_id, *, error_message, summary_json=None):
+        for stage_run in self.stage_runs:
+            if stage_run["id"] == stage_run_id:
+                stage_run["status"] = "failed"
+                stage_run["error_message"] = error_message
+                stage_run["summary_json"] = summary_json or {}
+                return stage_run
+        return None
+
+    def cancel_pipeline_stage_run(self, stage_run_id, *, error_message, summary_json=None):
+        for stage_run in self.stage_runs:
+            if stage_run["id"] == stage_run_id:
+                stage_run["status"] = "cancelled"
+                stage_run["error_message"] = error_message
+                stage_run["summary_json"] = summary_json or {}
+                return stage_run
+        return None
+
+    def upsert_worker_heartbeat(
+        self,
+        worker_name,
+        *,
+        status,
+        current_run_id=None,
+        current_stage_name=None,
+    ):
+        return {
+            "worker_name": worker_name,
+            "status": status,
+            "current_run_id": current_run_id,
+            "current_stage_name": current_stage_name,
+        }
 
     def close(self):
         return None
@@ -131,6 +218,14 @@ def test_run_daily_pipeline_happy_path(monkeypatch):
     assert captured["send_email_enabled"] is True
     assert captured["pipeline_run_id"] == "run-1"
     assert repo.completed is not None
+    assert [stage["stage_name"] for stage in repo.stage_runs] == [
+        "scraping",
+        "anthropic_markdown",
+        "youtube_transcripts",
+        "story_clustering",
+        "story_digests",
+        "email",
+    ]
 
 
 def test_run_daily_pipeline_handles_stage_exception(monkeypatch):
@@ -157,6 +252,7 @@ def test_run_daily_pipeline_handles_stage_exception(monkeypatch):
     assert result["success"] is False
     assert "anthropic stage failed" in result["error"]
     assert repo.failed is not None
+    assert repo.stage_runs[1]["status"] == "failed"
 
 
 def test_run_daily_pipeline_uses_profile_default_top_n_when_omitted(monkeypatch):
@@ -295,3 +391,32 @@ def test_run_daily_pipeline_dashboard_rerun_skips_email_delivery(monkeypatch):
 
     assert result["success"] is True
     assert captured["send_email_enabled"] is False
+
+
+def test_run_daily_pipeline_stops_after_cancelled_stage(monkeypatch):
+    repo = FakePipelineRepository()
+
+    monkeypatch.setattr(
+        daily_runner,
+        "get_runtime_user_profile",
+        lambda repo=None: {"slug": "default"},
+    )
+
+    def fake_run_scrapers(hours):
+        repo.cancel_pipeline_run("run-1")
+        return {"youtube": [], "openai": [], "anthropic": []}
+
+    monkeypatch.setattr(daily_runner, "run_scrapers", fake_run_scrapers)
+    monkeypatch.setattr(
+        daily_runner,
+        "process_anthropic_markdown",
+        lambda: {"total": 0, "processed": 0, "unavailable": 0, "failed": 0},
+    )
+
+    result = daily_runner.run_daily_pipeline(hours=24, repo=repo)
+
+    assert result["success"] is False
+    assert result["cancelled"] is True
+    assert "cancelled" in result["error"].lower()
+    assert [stage["stage_name"] for stage in repo.stage_runs] == ["scraping"]
+    assert repo.stage_runs[0]["status"] == "cancelled"

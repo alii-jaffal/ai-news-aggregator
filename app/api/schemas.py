@@ -7,6 +7,8 @@ from pydantic import BaseModel, Field
 class PipelineRunResponse(BaseModel):
     id: str
     trigger_source: str
+    run_type: str
+    requested_stage: str | None
     requested_hours: int
     requested_top_n: int | None
     profile_slug: str
@@ -17,6 +19,21 @@ class PipelineRunResponse(BaseModel):
     processing_summary: dict[str, Any]
     digest_summary: dict[str, Any]
     email_summary: dict[str, Any]
+    queued_at: datetime | None
+    started_at: datetime | None
+    ended_at: datetime | None
+    duration_seconds: float | None
+    stage_runs: list["PipelineStageRunResponse"] = Field(default_factory=list)
+
+
+class PipelineStageRunResponse(BaseModel):
+    id: str
+    pipeline_run_id: str
+    stage_name: str
+    status: str
+    summary_json: dict[str, Any]
+    error_message: str | None
+    retry_of_stage_run_id: str | None
     started_at: datetime | None
     ended_at: datetime | None
     duration_seconds: float | None
@@ -181,11 +198,28 @@ class DigestCountsResponse(BaseModel):
     failed: int
 
 
+class QueueSummaryResponse(BaseModel):
+    queued_runs: int
+    running_runs: int
+
+
+class WorkerStatusResponse(BaseModel):
+    worker_name: str
+    status: str
+    current_run_id: str | None
+    current_stage_name: str | None
+    last_heartbeat_at: datetime | None
+    started_at: datetime | None
+    updated_at: datetime | None
+
+
 class DashboardOverviewResponse(BaseModel):
     hours: int
     source_counts: SourceCountsResponse
     story_counts: StoryCountsResponse
     digest_counts: DigestCountsResponse
+    queue_summary: QueueSummaryResponse
+    worker_status: WorkerStatusResponse | None
     failure_summary: FailureSummaryResponse
     latest_pipeline_run: PipelineRunResponse | None
     latest_newsletter_run: NewsletterRunResponse | None
@@ -194,3 +228,6 @@ class DashboardOverviewResponse(BaseModel):
 class PipelineRunCreateRequest(BaseModel):
     hours: int = Field(default=24, ge=1, le=168)
     top_n: int | None = Field(default=None, ge=1, le=50)
+
+
+PipelineRunResponse.model_rebuild()

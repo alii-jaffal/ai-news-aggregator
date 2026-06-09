@@ -179,6 +179,14 @@ class PipelineRun(Base):
 
     id = Column(String, primary_key=True)
     trigger_source = Column(String(20), nullable=False, index=True)
+    run_type = Column(
+        String(30),
+        nullable=False,
+        default="full_pipeline",
+        server_default="full_pipeline",
+        index=True,
+    )
+    requested_stage = Column(String(50), nullable=True)
     requested_hours = Column(Integer, nullable=False)
     requested_top_n = Column(Integer, nullable=True)
     profile_slug = Column(String(100), nullable=False, index=True)
@@ -194,9 +202,57 @@ class PipelineRun(Base):
     processing_summary = Column(JSON, nullable=True)
     digest_summary = Column(JSON, nullable=True)
     email_summary = Column(JSON, nullable=True)
+    queued_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now(), index=True)
+    started_at = Column(DateTime(timezone=True), nullable=True)
+    ended_at = Column(DateTime(timezone=True), nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+
+class PipelineStageRun(Base):
+    __tablename__ = "pipeline_stage_runs"
+
+    id = Column(String, primary_key=True)
+    pipeline_run_id = Column(
+        String,
+        ForeignKey("pipeline_runs.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    stage_name = Column(String(50), nullable=False, index=True)
+    status = Column(String(20), nullable=False, index=True)
+    summary_json = Column(JSON, nullable=True)
+    error_message = Column(Text, nullable=True)
+    retry_of_stage_run_id = Column(
+        String,
+        ForeignKey("pipeline_stage_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
     ended_at = Column(DateTime(timezone=True), nullable=True)
     duration_seconds = Column(Float, nullable=True)
+
+
+class WorkerHeartbeat(Base):
+    __tablename__ = "worker_heartbeats"
+
+    worker_name = Column(String(100), primary_key=True)
+    status = Column(String(20), nullable=False, index=True)
+    current_run_id = Column(
+        String,
+        ForeignKey("pipeline_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    current_stage_name = Column(String(50), nullable=True)
+    last_heartbeat_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    started_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+    updated_at = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    )
 
 
 class NewsletterRun(Base):

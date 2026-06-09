@@ -1,4 +1,4 @@
-import { AlertTriangle, Mail, Newspaper, Play, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, Mail, Newspaper, Play, RefreshCw, Sparkles, Square } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useState } from "react";
 
@@ -35,6 +35,16 @@ export function OverviewPage() {
     },
   });
 
+  const cancelRunMutation = useMutation({
+    mutationFn: (runId: string) => api.cancelPipelineRun(runId),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+      ]);
+    },
+  });
+
   if (overviewQuery.isLoading) {
     return <div className="empty-state">Loading dashboard overview...</div>;
   }
@@ -47,8 +57,28 @@ export function OverviewPage() {
     );
   }
 
-  const { source_counts, story_counts, digest_counts, latest_pipeline_run, latest_newsletter_run } =
-    overviewQuery.data;
+  const {
+    source_counts,
+    story_counts,
+    digest_counts,
+    queue_summary,
+    worker_status,
+    latest_pipeline_run,
+    latest_newsletter_run,
+  } = overviewQuery.data;
+  const hasActiveRun =
+    latest_pipeline_run !== null && ["queued", "running"].includes(latest_pipeline_run.status);
+  const workerHeartbeatAgeMs = worker_status?.last_heartbeat_at
+    ? Date.now() - new Date(worker_status.last_heartbeat_at).getTime()
+    : null;
+  const workerLooksStale =
+    hasActiveRun &&
+    (worker_status === null ||
+      workerHeartbeatAgeMs === null ||
+      workerHeartbeatAgeMs > 60_000 ||
+      (worker_status.current_run_id !== null &&
+        latest_pipeline_run !== null &&
+        worker_status.current_run_id !== latest_pipeline_run.id));
 
   return (
     <div className="page-stack">
@@ -57,8 +87,8 @@ export function OverviewPage() {
           <div>
             <h2>Trigger a dashboard rerun</h2>
             <p>
-              This reruns the pipeline for a recent window and stores the results in the dashboard.
-              Email delivery stays disabled here.
+              This queues a pipeline rerun for a recent window and stores the results in the
+              dashboard. Email delivery stays disabled here.
             </p>
           </div>
           <form
@@ -80,15 +110,47 @@ export function OverviewPage() {
                 placeholder="Profile default"
               />
             </label>
-            <button className="primary-button" type="submit" disabled={createRunMutation.isPending}>
+            <button
+              className="primary-button"
+              type="submit"
+              disabled={createRunMutation.isPending || hasActiveRun}
+            >
               <Play size={15} />
               <span>{createRunMutation.isPending ? "Queued..." : "Run pipeline"}</span>
             </button>
+            {hasActiveRun && latest_pipeline_run ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={cancelRunMutation.isPending}
+                onClick={() => void cancelRunMutation.mutateAsync(latest_pipeline_run.id)}
+              >
+                <Square size={15} />
+                <span>{cancelRunMutation.isPending ? "Cancelling..." : "Cancel active run"}</span>
+              </button>
+            ) : null}
           </form>
         </div>
         {createRunMutation.error ? (
           <div className="inline-alert inline-alert-danger">
             {(createRunMutation.error as Error).message}
+          </div>
+        ) : null}
+        {cancelRunMutation.error ? (
+          <div className="inline-alert inline-alert-danger">
+            {(cancelRunMutation.error as Error).message}
+          </div>
+        ) : null}
+        {!worker_status ? (
+          <div className="inline-alert inline-alert-warning">
+            No worker heartbeat detected. Start <code>uv run -m app.worker</code> to process queued
+            runs.
+          </div>
+        ) : null}
+        {workerLooksStale ? (
+          <div className="inline-alert inline-alert-warning">
+            The active run looks stale. If the worker is no longer progressing, cancel the run and
+            start the worker again.
           </div>
         ) : null}
       </section>
@@ -117,6 +179,8 @@ export function OverviewPage() {
           value={overviewQuery.data.failure_summary.summary.pipeline_failed}
           icon={<AlertTriangle size={16} />}
         />
+        <MetricCard label="Queued runs" value={queue_summary.queued_runs} />
+        <MetricCard label="Running runs" value={queue_summary.running_runs} />
       </section>
 
       <section className="two-column-grid">
@@ -137,6 +201,10 @@ export function OverviewPage() {
           {latest_pipeline_run ? (
             <div className="stack-list">
               <div className="key-value">
+                <span>Queued</span>
+                <strong>{formatDate(latest_pipeline_run.queued_at)}</strong>
+              </div>
+              <div className="key-value">
                 <span>Started</span>
                 <strong>{formatDate(latest_pipeline_run.started_at)}</strong>
               </div>
@@ -151,6 +219,10 @@ export function OverviewPage() {
               <div className="key-value">
                 <span>Email</span>
                 <strong>{latest_pipeline_run.send_email ? "Enabled" : "Disabled"}</strong>
+              </div>
+              <div className="key-value">
+                <span>Run type</span>
+                <strong>{latest_pipeline_run.run_type}</strong>
               </div>
               {latest_pipeline_run.error_message ? (
                 <div className="inline-alert inline-alert-danger">
@@ -196,6 +268,42 @@ export function OverviewPage() {
             <div className="empty-state">No newsletter snapshots stored yet.</div>
           )}
         </article>
+      </section>
+
+      <section className="panel">
+        <div className="panel__header">
+          <div>
+            <p className="panel__eyebrow">Worker</p>
+            <h2>Queue and worker status</h2>
+          </div>
+        </div>
+
+        {worker_status ? (
+          <div className="stack-list">
+            <div className="key-value">
+              <span>Worker</span>
+              <strong>{worker_status.worker_name}</strong>
+            </div>
+            <div className="key-value">
+              <span>Status</span>
+              <StatusBadge label={worker_status.status} tone={toneForStatus(worker_status.status)} />
+            </div>
+            <div className="key-value">
+              <span>Current run</span>
+              <strong>{worker_status.current_run_id ?? "Idle"}</strong>
+            </div>
+            <div className="key-value">
+              <span>Current stage</span>
+              <strong>{worker_status.current_stage_name ?? "N/A"}</strong>
+            </div>
+            <div className="key-value">
+              <span>Last heartbeat</span>
+              <strong>{formatDate(worker_status.last_heartbeat_at)}</strong>
+            </div>
+          </div>
+        ) : (
+          <div className="empty-state">No worker heartbeat has been recorded yet.</div>
+        )}
       </section>
 
       <section className="panel">

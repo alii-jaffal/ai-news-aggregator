@@ -7,6 +7,7 @@ import type {
   SourceArchiveItem,
   StoryArchiveDetail,
   StoryArchiveItem,
+  WorkerStatus,
 } from "./types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api";
@@ -84,10 +85,18 @@ export const api = {
   getPipelineRun(runId: string): Promise<PipelineRun> {
     return fetchJson<PipelineRun>(`/pipeline-runs/${runId}`);
   },
+  getWorkerStatus(): Promise<WorkerStatus | null> {
+    return fetchJson<WorkerStatus | null>("/worker-status");
+  },
   createPipelineRun(payload: { hours: number; top_n: number | null }): Promise<PipelineRun> {
     return fetchJson<PipelineRun>("/pipeline-runs", {
       method: "POST",
       body: JSON.stringify(payload),
+    });
+  },
+  cancelPipelineRun(runId: string): Promise<PipelineRun> {
+    return fetchJson<PipelineRun>(`/pipeline-runs/${runId}/cancel`, {
+      method: "POST",
     });
   },
   getNewsletterRuns(limit = 20, offset = 0): Promise<PaginatedResponse<NewsletterRun>> {

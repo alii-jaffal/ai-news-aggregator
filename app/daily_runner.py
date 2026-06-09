@@ -13,6 +13,29 @@ from app.services.process_youtube import process_youtube_transcripts
 logger = logging.getLogger(__name__)
 
 
+class PipelineRunCancelled(Exception):
+    pass
+
+
+def _touch_worker_heartbeat(
+    repo: Repository,
+    *,
+    worker_name: str | None,
+    status: str,
+    pipeline_run_id: str | None,
+    stage_name: str | None,
+) -> None:
+    if not worker_name or not hasattr(repo, "upsert_worker_heartbeat"):
+        return
+
+    repo.upsert_worker_heartbeat(
+        worker_name,
+        status=status,
+        current_run_id=pipeline_run_id,
+        current_stage_name=stage_name,
+    )
+
+
 def run_daily_pipeline(
     hours: int = 24,
     top_n: int | None = None,
@@ -21,6 +44,7 @@ def run_daily_pipeline(
     trigger_source: str = "cli",
     pipeline_run_id: str | None = None,
     repo: Repository | None = None,
+    worker_name: str | None = None,
 ) -> dict:
     created_repo = repo is None
     repo = repo or Repository()
@@ -56,87 +80,209 @@ def run_daily_pipeline(
 
         results["pipeline_run_id"] = pipeline_run_id
         repo.mark_pipeline_run_running(pipeline_run_id)
-
-        logger.info("[1/6] Scraping articles from sources...")
-        scraping_results = run_scrapers(hours=hours)
-        results["scraping"] = {
-            "youtube": len(scraping_results.get("youtube", [])),
-            "openai": len(scraping_results.get("openai", [])),
-            "anthropic": len(scraping_results.get("anthropic", [])),
-        }
-        repo.update_pipeline_run_progress(pipeline_run_id, scraping_summary=results["scraping"])
-        logger.info(
-            "Scraped %s YouTube videos, %s OpenAI articles, %s Anthropic articles",
-            results["scraping"]["youtube"],
-            results["scraping"]["openai"],
-            results["scraping"]["anthropic"],
-        )
-
-        logger.info("[2/6] Processing Anthropic markdown...")
-        anthropic_result = process_anthropic_markdown()
-        results["processing"]["anthropic"] = anthropic_result
-        repo.update_pipeline_run_progress(
-            pipeline_run_id,
-            processing_summary=results["processing"],
-        )
-        logger.info(
-            "Processed %s Anthropic articles (%s unavailable, %s failed)",
-            anthropic_result["processed"],
-            anthropic_result["unavailable"],
-            anthropic_result["failed"],
-        )
-
-        logger.info("[3/6] Processing YouTube transcripts...")
-        youtube_result = process_youtube_transcripts()
-        results["processing"]["youtube"] = youtube_result
-        repo.update_pipeline_run_progress(
-            pipeline_run_id,
-            processing_summary=results["processing"],
-        )
-        logger.info(
-            "Processed %s transcripts (%s unavailable, %s failed)",
-            youtube_result["processed"],
-            youtube_result["unavailable"],
-            youtube_result["failed"],
-        )
-
-        logger.info("[4/6] Clustering source items into stories...")
-        story_result = process_story_clusters(hours=hours, repo=repo)
-        results["processing"]["stories"] = story_result
-        repo.update_pipeline_run_progress(
-            pipeline_run_id,
-            processing_summary=results["processing"],
-        )
-        logger.info(
-            "Clustered %s items into %s stories (%s multi-item, %s singleton)",
-            story_result["items_considered"],
-            story_result["stories"],
-            story_result["multi_item_stories"],
-            story_result["singleton_stories"],
-        )
-
-        logger.info("[5/6] Creating canonical story digests...")
-        digest_result = process_story_digests(repo=repo)
-        results["digests"] = digest_result
-        repo.update_pipeline_run_progress(pipeline_run_id, digest_summary=results["digests"])
-        logger.info(
-            "Created %s story digests (%s failed, %s fallback out of %s total)",
-            digest_result["processed"],
-            digest_result["failed"],
-            digest_result["fallback_used"],
-            digest_result["total"],
-        )
-
-        logger.info("[6/6] Generating and %s email digest...", "sending" if send_email else "capturing")
-        email_result = run_email_stage(
-            hours=hours,
-            top_n=top_n,
-            send_email_enabled=send_email,
+        _touch_worker_heartbeat(
+            repo,
+            worker_name=worker_name,
+            status="running",
             pipeline_run_id=pipeline_run_id,
-            repo=repo,
+            stage_name=None,
         )
-        results["email"] = email_result
-        repo.update_pipeline_run_progress(pipeline_run_id, email_summary=email_result)
+
+        def ensure_run_not_cancelled(message: str = "Pipeline run was cancelled") -> None:
+            if hasattr(repo, "is_pipeline_run_cancelled") and repo.is_pipeline_run_cancelled(
+                pipeline_run_id
+            ):
+                raise PipelineRunCancelled(message)
+
+        def execute_stage(
+            stage_name: str,
+            stage_index: int,
+            stage_title: str,
+            runner,
+            *,
+            stage_summary_builder=None,
+            failure_detector=None,
+            failure_message_builder=None,
+            on_success=None,
+        ):
+            ensure_run_not_cancelled()
+            logger.info("[%s/6] %s...", stage_index, stage_title)
+            _touch_worker_heartbeat(
+                repo,
+                worker_name=worker_name,
+                status="running",
+                pipeline_run_id=pipeline_run_id,
+                stage_name=stage_name,
+            )
+            stage_run = repo.start_pipeline_stage_run(
+                pipeline_run_id,
+                stage_name=stage_name,
+            )
+            try:
+                raw_result = runner()
+                stage_summary = (
+                    stage_summary_builder(raw_result)
+                    if stage_summary_builder is not None
+                    else raw_result
+                )
+                serialized_summary = (
+                    stage_summary if isinstance(stage_summary, dict) else {"result": stage_summary}
+                )
+                if hasattr(repo, "is_pipeline_run_cancelled") and repo.is_pipeline_run_cancelled(
+                    pipeline_run_id
+                ):
+                    repo.cancel_pipeline_stage_run(
+                        stage_run.id,
+                        error_message="Pipeline run was cancelled",
+                        summary_json=serialized_summary,
+                    )
+                    raise PipelineRunCancelled("Pipeline run was cancelled")
+                if failure_detector is not None and failure_detector(raw_result):
+                    repo.fail_pipeline_stage_run(
+                        stage_run.id,
+                        error_message=(
+                            failure_message_builder(raw_result)
+                            if failure_message_builder is not None
+                            else "Stage failed"
+                        ),
+                        summary_json=serialized_summary,
+                    )
+                else:
+                    repo.complete_pipeline_stage_run(
+                        stage_run.id,
+                        summary_json=serialized_summary,
+                    )
+                if on_success is not None:
+                    on_success(raw_result, stage_summary)
+                return raw_result
+            except PipelineRunCancelled:
+                raise
+            except Exception as exc:
+                repo.fail_pipeline_stage_run(
+                    stage_run.id,
+                    error_message=str(exc),
+                )
+                raise
+
+        execute_stage(
+            "scraping",
+            1,
+            "Scraping articles from sources",
+            lambda: run_scrapers(hours=hours),
+            stage_summary_builder=lambda raw: {
+                "youtube": len(raw.get("youtube", [])),
+                "openai": len(raw.get("openai", [])),
+                "anthropic": len(raw.get("anthropic", [])),
+            },
+            on_success=lambda raw, summary: (
+                results.__setitem__("scraping", summary),
+                repo.update_pipeline_run_progress(pipeline_run_id, scraping_summary=results["scraping"]),
+                logger.info(
+                    "Scraped %s YouTube videos, %s OpenAI articles, %s Anthropic articles",
+                    summary["youtube"],
+                    summary["openai"],
+                    summary["anthropic"],
+                ),
+            ),
+        )
+
+        execute_stage(
+            "anthropic_markdown",
+            2,
+            "Processing Anthropic markdown",
+            process_anthropic_markdown,
+            on_success=lambda raw, summary: (
+                results["processing"].__setitem__("anthropic", raw),
+                repo.update_pipeline_run_progress(
+                    pipeline_run_id,
+                    processing_summary=results["processing"],
+                ),
+                logger.info(
+                    "Processed %s Anthropic articles (%s unavailable, %s failed)",
+                    raw["processed"],
+                    raw["unavailable"],
+                    raw["failed"],
+                ),
+            ),
+        )
+
+        execute_stage(
+            "youtube_transcripts",
+            3,
+            "Processing YouTube transcripts",
+            process_youtube_transcripts,
+            on_success=lambda raw, summary: (
+                results["processing"].__setitem__("youtube", raw),
+                repo.update_pipeline_run_progress(
+                    pipeline_run_id,
+                    processing_summary=results["processing"],
+                ),
+                logger.info(
+                    "Processed %s transcripts (%s unavailable, %s failed)",
+                    raw["processed"],
+                    raw["unavailable"],
+                    raw["failed"],
+                ),
+            ),
+        )
+
+        execute_stage(
+            "story_clustering",
+            4,
+            "Clustering source items into stories",
+            lambda: process_story_clusters(hours=hours, repo=repo),
+            on_success=lambda raw, summary: (
+                results["processing"].__setitem__("stories", raw),
+                repo.update_pipeline_run_progress(
+                    pipeline_run_id,
+                    processing_summary=results["processing"],
+                ),
+                logger.info(
+                    "Clustered %s items into %s stories (%s multi-item, %s singleton)",
+                    raw["items_considered"],
+                    raw["stories"],
+                    raw["multi_item_stories"],
+                    raw["singleton_stories"],
+                ),
+            ),
+        )
+
+        execute_stage(
+            "story_digests",
+            5,
+            "Creating canonical story digests",
+            lambda: process_story_digests(repo=repo),
+            on_success=lambda raw, summary: (
+                results.__setitem__("digests", raw),
+                repo.update_pipeline_run_progress(pipeline_run_id, digest_summary=results["digests"]),
+                logger.info(
+                    "Created %s story digests (%s failed, %s fallback out of %s total)",
+                    raw["processed"],
+                    raw["failed"],
+                    raw["fallback_used"],
+                    raw["total"],
+                ),
+            ),
+        )
+
+        email_result = execute_stage(
+            "email",
+            6,
+            f"Generating and {'sending' if send_email else 'capturing'} email digest",
+            lambda: run_email_stage(
+                hours=hours,
+                top_n=top_n,
+                send_email_enabled=send_email,
+                pipeline_run_id=pipeline_run_id,
+                repo=repo,
+            ),
+            failure_detector=lambda raw: not raw.get("success", False),
+            failure_message_builder=lambda raw: raw.get("error", "Email stage failed"),
+            on_success=lambda raw, summary: (
+                results.__setitem__("email", raw),
+                repo.update_pipeline_run_progress(pipeline_run_id, email_summary=raw),
+            ),
+        )
 
         if email_result.get("success") and email_result.get("sent"):
             logger.info(
@@ -150,6 +296,10 @@ def run_daily_pipeline(
         else:
             logger.error("Failed to send email: %s", email_result.get("error", "Unknown error"))
 
+    except PipelineRunCancelled as exc:
+        logger.info("Pipeline cancelled: %s", exc)
+        results["error"] = str(exc)
+        results["cancelled"] = True
     except Exception as exc:
         logger.exception("Pipeline failed")
         results["error"] = str(exc)
@@ -198,6 +348,14 @@ def run_daily_pipeline(
 
     logger.info("Email: %s", email_status)
     logger.info("=" * 60)
+
+    _touch_worker_heartbeat(
+        repo,
+        worker_name=worker_name,
+        status="idle" if results["success"] or results.get("cancelled") else "error",
+        pipeline_run_id=None,
+        stage_name=None,
+    )
 
     if created_repo:
         repo.close()

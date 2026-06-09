@@ -1,6 +1,8 @@
 export interface PipelineRun {
   id: string;
   trigger_source: string;
+  run_type: string;
+  requested_stage: string | null;
   requested_hours: number;
   requested_top_n: number | null;
   profile_slug: string;
@@ -11,9 +13,34 @@ export interface PipelineRun {
   processing_summary: Record<string, unknown>;
   digest_summary: Record<string, unknown>;
   email_summary: Record<string, unknown>;
+  queued_at: string | null;
   started_at: string | null;
   ended_at: string | null;
   duration_seconds: number | null;
+  stage_runs: PipelineStageRun[];
+}
+
+export interface PipelineStageRun {
+  id: string;
+  pipeline_run_id: string;
+  stage_name: string;
+  status: string;
+  summary_json: Record<string, unknown>;
+  error_message: string | null;
+  retry_of_stage_run_id: string | null;
+  started_at: string | null;
+  ended_at: string | null;
+  duration_seconds: number | null;
+}
+
+export interface WorkerStatus {
+  worker_name: string;
+  status: string;
+  current_run_id: string | null;
+  current_stage_name: string | null;
+  last_heartbeat_at: string | null;
+  started_at: string | null;
+  updated_at: string | null;
 }
 
 export interface NewsletterRun {
@@ -156,6 +183,11 @@ export interface DashboardOverview {
     pending: number;
     failed: number;
   };
+  queue_summary: {
+    queued_runs: number;
+    running_runs: number;
+  };
+  worker_status: WorkerStatus | null;
   failure_summary: FailureSummary;
   latest_pipeline_run: PipelineRun | null;
   latest_newsletter_run: NewsletterRun | null;

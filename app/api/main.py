@@ -1,6 +1,6 @@
 from datetime import datetime
 
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Query, Response
+from fastapi import Depends, FastAPI, HTTPException, Query, Response
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.dependencies import get_repository
@@ -16,20 +16,10 @@ from app.api.schemas import (
     SourceArchiveListResponse,
     StoryArchiveDetailResponse,
     StoryArchiveListResponse,
+    WorkerStatusResponse,
 )
-from app.daily_runner import run_daily_pipeline
 from app.database.repository import Repository
 from app.profiles.profile_store import get_runtime_user_profile
-
-
-def execute_pipeline_run(run_id: str, hours: int, top_n: int | None) -> None:
-    run_daily_pipeline(
-        hours=hours,
-        top_n=top_n,
-        send_email=False,
-        trigger_source="api",
-        pipeline_run_id=run_id,
-    )
 
 
 def create_app() -> FastAPI:
@@ -148,10 +138,18 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Pipeline run not found")
         return PipelineRunResponse.model_validate(item)
 
+    @app.get("/api/worker-status", response_model=WorkerStatusResponse | None)
+    def get_worker_status(
+        repo: Repository = Depends(get_repository),
+    ) -> WorkerStatusResponse | None:
+        status = repo.get_worker_status()
+        if status is None:
+            return None
+        return WorkerStatusResponse.model_validate(status)
+
     @app.post("/api/pipeline-runs", response_model=PipelineRunResponse, status_code=202)
     def create_pipeline_run(
         payload: PipelineRunCreateRequest,
-        background_tasks: BackgroundTasks,
         repo: Repository = Depends(get_repository),
     ) -> PipelineRunResponse:
         if repo.has_active_pipeline_run():
@@ -166,8 +164,24 @@ def create_app() -> FastAPI:
             send_email=False,
             status="queued",
         )
-        background_tasks.add_task(execute_pipeline_run, pipeline_run.id, payload.hours, payload.top_n)
         return PipelineRunResponse.model_validate(repo.get_pipeline_run_detail(pipeline_run.id))
+
+    @app.post("/api/pipeline-runs/{run_id}/cancel", response_model=PipelineRunResponse)
+    def cancel_pipeline_run(
+        run_id: str,
+        repo: Repository = Depends(get_repository),
+    ) -> PipelineRunResponse:
+        pipeline_run = repo.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            raise HTTPException(status_code=404, detail="Pipeline run not found")
+        if pipeline_run.status not in ("queued", "running"):
+            raise HTTPException(status_code=409, detail="Pipeline run is not cancellable")
+
+        repo.cancel_pipeline_run(run_id)
+        item = repo.get_pipeline_run_detail(run_id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Pipeline run not found")
+        return PipelineRunResponse.model_validate(item)
 
     @app.get("/api/newsletter-runs", response_model=NewsletterRunListResponse)
     def list_newsletter_runs(

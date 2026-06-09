@@ -1,5 +1,6 @@
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
+import { Square } from "lucide-react";
 
 import { api } from "../api";
 import { DataTable } from "../components/DataTable";
@@ -8,6 +9,7 @@ import { StatusBadge } from "../components/StatusBadge";
 import { formatDate, formatDuration, toneForStatus } from "../utils";
 
 export function RunsPage() {
+  const queryClient = useQueryClient();
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
 
   const runsQuery = useQuery({
@@ -25,6 +27,17 @@ export function RunsPage() {
     queryKey: ["pipeline-run-detail", selectedRunId],
     queryFn: () => api.getPipelineRun(selectedRunId ?? ""),
     enabled: Boolean(selectedRunId),
+  });
+
+  const cancelRunMutation = useMutation({
+    mutationFn: (runId: string) => api.cancelPipelineRun(runId),
+    onSuccess: async (_, runId) => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-run-detail", runId] }),
+        queryClient.invalidateQueries({ queryKey: ["overview"] }),
+      ]);
+    },
   });
 
   useEffect(() => {
@@ -101,8 +114,16 @@ export function RunsPage() {
           <div className="stack-list">
             <StatusBadge label={runDetailQuery.data.status} tone={toneForStatus(runDetailQuery.data.status)} />
             <div className="key-value">
+              <span>Queued</span>
+              <strong>{formatDate(runDetailQuery.data.queued_at)}</strong>
+            </div>
+            <div className="key-value">
               <span>Profile</span>
               <strong>{runDetailQuery.data.profile_slug}</strong>
+            </div>
+            <div className="key-value">
+              <span>Run type</span>
+              <strong>{runDetailQuery.data.run_type}</strong>
             </div>
             <div className="key-value">
               <span>Email delivery</span>
@@ -117,6 +138,45 @@ export function RunsPage() {
                 {runDetailQuery.data.error_message}
               </div>
             ) : null}
+            {["queued", "running"].includes(runDetailQuery.data.status) ? (
+              <button
+                className="secondary-button"
+                type="button"
+                disabled={cancelRunMutation.isPending}
+                onClick={() => void cancelRunMutation.mutateAsync(runDetailQuery.data!.id)}
+              >
+                <Square size={15} />
+                <span>{cancelRunMutation.isPending ? "Cancelling..." : "Cancel run"}</span>
+              </button>
+            ) : null}
+            {cancelRunMutation.error ? (
+              <div className="inline-alert inline-alert-danger">
+                {(cancelRunMutation.error as Error).message}
+              </div>
+            ) : null}
+            <div className="detail-block">
+              <h4>Stage timeline</h4>
+              {runDetailQuery.data.stage_runs.length ? (
+                <div className="stack-list">
+                  {runDetailQuery.data.stage_runs.map((stageRun) => (
+                    <div key={stageRun.id} className="list-row">
+                      <div>
+                        <strong>{stageRun.stage_name}</strong>
+                        <p>
+                          {formatDate(stageRun.started_at)} Â· {formatDuration(stageRun.duration_seconds)}
+                        </p>
+                      </div>
+                      <div className="list-row__meta">
+                        <StatusBadge label={stageRun.status} tone={toneForStatus(stageRun.status)} />
+                        {stageRun.error_message ? <span>{stageRun.error_message}</span> : null}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="empty-state">No stage history recorded for this run.</div>
+              )}
+            </div>
             <div className="detail-block">
               <h4>Scraping summary</h4>
               <pre>{JSON.stringify(runDetailQuery.data.scraping_summary, null, 2)}</pre>

@@ -211,7 +211,17 @@ From the repo root:
 uv run uvicorn app.api.main:app --reload
 ```
 
-### 3. Run the React frontend
+### 3. Run the pipeline worker
+
+From the repo root, in a separate terminal:
+
+```bash
+uv run -m app.worker
+```
+
+Dashboard-triggered reruns are now queued and consumed by this worker.
+
+### 4. Run the React frontend
 
 From `frontend/`:
 
@@ -251,6 +261,12 @@ uv run -m app.services.process_email
 uv run uvicorn app.api.main:app --reload
 ```
 
+### Run the dashboard worker
+
+```bash
+uv run -m app.worker
+```
+
 ### Manage user profiles
 
 ```bash
@@ -264,10 +280,12 @@ The legacy `app/profiles/user_profile.py` file is now only used to seed the firs
 
 ## Dashboard behavior
 
-- The dashboard is local-only in v1.
+- The dashboard is local-only in v1/v2.
 - Dashboard-triggered reruns create pipeline history rows and newsletter snapshots.
-- Dashboard-triggered reruns do **not** send email.
+- Dashboard-triggered reruns are queued for the standalone worker and do **not** send email.
+- Queued or running dashboard reruns can be cancelled from the dashboard UI.
 - CLI-triggered runs keep normal email behavior.
+- Pipeline runs now persist stage-level history and worker heartbeat status for the dashboard.
 
 ## Tests
 

@@ -75,6 +75,8 @@ def test_pipeline_and_newsletter_run_lifecycle(db_session):
         send_email=True,
     )
     repo.mark_pipeline_run_running(pipeline_run.id)
+    scraping_stage = repo.start_pipeline_stage_run(pipeline_run.id, stage_name="scraping")
+    repo.complete_pipeline_stage_run(scraping_stage.id, summary_json={"youtube": 1})
     repo.update_pipeline_run_progress(
         pipeline_run.id,
         scraping_summary={"youtube": 1},
@@ -104,13 +106,46 @@ def test_pipeline_and_newsletter_run_lifecycle(db_session):
 
     listed_runs = repo.list_pipeline_runs(limit=10, offset=0)
     listed_newsletters = repo.list_newsletter_runs(limit=10, offset=0)
+    run_detail = repo.get_pipeline_run_detail(pipeline_run.id)
 
     assert listed_runs["total"] == 1
     assert listed_runs["items"][0]["status"] == "completed"
+    assert listed_runs["items"][0]["run_type"] == "full_pipeline"
     assert listed_runs["items"][0]["email_summary"]["sent"] is True
+    assert run_detail["stage_runs"][0]["stage_name"] == "scraping"
     assert listed_newsletters["total"] == 1
     assert listed_newsletters["items"][0]["sent"] is True
     assert listed_newsletters["items"][0]["pipeline_run_id"] == pipeline_run.id
+
+
+def test_cancel_pipeline_run_preserves_cancelled_status(db_session):
+    repo = Repository(session=db_session)
+
+    pipeline_run = repo.create_pipeline_run(
+        trigger_source="api",
+        requested_hours=24,
+        requested_top_n=None,
+        profile_slug="default",
+        send_email=False,
+    )
+    repo.mark_pipeline_run_running(pipeline_run.id)
+    stage_run = repo.start_pipeline_stage_run(pipeline_run.id, stage_name="scraping")
+
+    cancelled_run = repo.cancel_pipeline_run(pipeline_run.id)
+    repo.complete_pipeline_run(
+        pipeline_run.id,
+        scraping_summary={"youtube": 1},
+        processing_summary={},
+        digest_summary={},
+        email_summary={"success": False},
+    )
+    run_detail = repo.get_pipeline_run_detail(pipeline_run.id)
+
+    assert cancelled_run is not None
+    assert run_detail["status"] == "cancelled"
+    assert run_detail["error_message"] == "Cancelled from dashboard"
+    assert run_detail["stage_runs"][0]["status"] == "cancelled"
+    assert run_detail["scraping_summary"]["youtube"] == 1
 
 
 def test_source_and_story_archive_queries(db_session):
@@ -184,6 +219,12 @@ def test_dashboard_overview_and_failures(db_session):
         digest_summary={},
         email_summary={},
     )
+    repo.upsert_worker_heartbeat(
+        "dashboard-worker",
+        status="idle",
+        current_run_id=None,
+        current_stage_name=None,
+    )
 
     overview = repo.get_dashboard_overview(hours=24)
     failures = repo.get_failure_summary(hours=168)
@@ -191,6 +232,8 @@ def test_dashboard_overview_and_failures(db_session):
     assert overview["source_counts"]["youtube"] >= 1
     assert overview["story_counts"]["total"] >= 1
     assert overview["latest_pipeline_run"]["status"] == "failed"
+    assert overview["queue_summary"]["queued_runs"] == 0
+    assert overview["worker_status"]["worker_name"] == "dashboard-worker"
     assert failures["summary"]["youtube_unavailable"] == 1
     assert failures["summary"]["anthropic_failed"] == 1
     assert failures["summary"]["story_digest_failed"] == 1
