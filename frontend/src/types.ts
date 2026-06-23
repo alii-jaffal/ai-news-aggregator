@@ -43,6 +43,11 @@ export interface WorkerStatus {
   updated_at: string | null;
 }
 
+export interface DashboardSession {
+  authenticated: boolean;
+  username: string | null;
+}
+
 export interface NewsletterRun {
   id: string;
   pipeline_run_id: string | null;

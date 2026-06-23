@@ -174,6 +174,16 @@ a {
   gap: 10px;
 }
 
+.toolbar-user-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 12px;
+  border-radius: 11px;
+  background: rgba(29, 44, 79, 0.05);
+  color: var(--text-secondary);
+  box-shadow: inset 0 0 0 1px rgba(29, 44, 79, 0.08);
+}
+
 .app-content,
 .page-stack {
   display: flex;
@@ -552,6 +562,70 @@ a {
   border: 1px dashed rgba(29, 44, 79, 0.12);
   color: var(--text-secondary);
   text-align: center;
+}
+
+.login-shell {
+  min-height: 100vh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.login-card {
+  width: min(460px, 100%);
+  padding: 26px;
+  border: 1px solid var(--panel-border);
+  border-radius: 22px;
+  background: var(--panel-bg);
+  box-shadow: var(--shadow-lg);
+  backdrop-filter: blur(18px);
+}
+
+.login-card__header {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.login-card__header h1 {
+  margin: 0;
+  font-size: 1.8rem;
+  letter-spacing: -0.04em;
+}
+
+.login-card__header p {
+  margin: 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.login-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  font-size: 0.84rem;
+}
+
+.login-form input {
+  width: 100%;
+  padding: 11px 12px;
+  border: 1px solid rgba(29, 44, 79, 0.12);
+  border-radius: 10px;
+  background: #fbfcfe;
+  color: var(--text-primary);
+  outline: none;
+  transition: border-color 140ms ease, box-shadow 140ms ease;
+}
+
+.login-form input:focus {
+  border-color: rgba(51, 121, 255, 0.32);
+  box-shadow: 0 0 0 4px rgba(51, 121, 255, 0.1);
 }
 
 @media (max-width: 1220px) {

@@ -29,6 +29,10 @@ class Settings(BaseSettings):
 
     PROXY_USERNAME: str | None = None
     PROXY_PASSWORD: str | None = None
+    DASHBOARD_ADMIN_USERNAME: str = "admin"
+    DASHBOARD_ADMIN_PASSWORD: str = "change-me-dashboard-password"
+    DASHBOARD_SESSION_SECRET: str = "change-me-dashboard-session-secret"
+    DASHBOARD_ALLOWED_ORIGINS: str = "http://127.0.0.1:5173,http://localhost:5173"
 
 
 settings = Settings()

@@ -230,4 +230,14 @@ class PipelineRunCreateRequest(BaseModel):
     top_n: int | None = Field(default=None, ge=1, le=50)
 
 
+class DashboardSessionResponse(BaseModel):
+    authenticated: bool
+    username: str | None = None
+
+
+class DashboardLoginRequest(BaseModel):
+    username: str = Field(min_length=1)
+    password: str = Field(min_length=1)
+
+
 PipelineRunResponse.model_rebuild()

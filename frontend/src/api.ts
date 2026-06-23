@@ -1,5 +1,6 @@
 import type {
   DashboardOverview,
+  DashboardSession,
   FailureSummary,
   NewsletterRun,
   PaginatedResponse,
@@ -10,10 +11,16 @@ import type {
   WorkerStatus,
 } from "./types";
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000/api";
+const defaultApiHost =
+  typeof window !== "undefined" && window.location.hostname
+    ? window.location.hostname
+    : "127.0.0.1";
+
+const API_BASE = import.meta.env.VITE_API_BASE_URL ?? `http://${defaultApiHost}:8000/api`;
 
 async function fetchJson<T>(path: string, init?: RequestInit): Promise<T> {
   const response = await fetch(`${API_BASE}${path}`, {
+    credentials: "include",
     headers: {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
@@ -55,6 +62,20 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 }
 
 export const api = {
+  getSession(): Promise<DashboardSession> {
+    return fetchJson<DashboardSession>("/session");
+  },
+  login(payload: { username: string; password: string }): Promise<DashboardSession> {
+    return fetchJson<DashboardSession>("/login", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
+  logout(): Promise<DashboardSession> {
+    return fetchJson<DashboardSession>("/logout", {
+      method: "POST",
+    });
+  },
   getOverview(hours = 24): Promise<DashboardOverview> {
     return fetchJson<DashboardOverview>(`/dashboard/overview?hours=${hours}`);
   },

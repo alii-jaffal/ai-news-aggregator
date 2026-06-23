@@ -10,6 +10,7 @@ from app.api.dependencies import get_repository
 from app.api.main import create_app
 from app.database.models import Base
 from app.database.repository import Repository
+from app.settings import settings
 
 
 def _build_session_factory():
@@ -43,6 +44,17 @@ def _build_app_and_repo():
 
     app.dependency_overrides[get_repository] = override_repository
     return app, seed_repo, seed_session
+
+
+def _login(client: TestClient) -> None:
+    response = client.post(
+        "/api/login",
+        json={
+            "username": settings.DASHBOARD_ADMIN_USERNAME,
+            "password": settings.DASHBOARD_ADMIN_PASSWORD,
+        },
+    )
+    assert response.status_code == 200
 
 
 def _seed_dashboard_api_data(repo: Repository, now: datetime) -> None:
@@ -139,6 +151,7 @@ def test_dashboard_api_overview_archive_and_run_endpoints():
     try:
         _seed_dashboard_api_data(seed_repo, datetime.now(timezone.utc))
         client = TestClient(app)
+        _login(client)
 
         health = client.get("/api/health")
         overview = client.get("/api/dashboard/overview?hours=24")
@@ -175,6 +188,7 @@ def test_create_pipeline_run_endpoint_conflict_and_queue(monkeypatch):
     app, seed_repo, seed_session = _build_app_and_repo()
     try:
         client = TestClient(app)
+        _login(client)
 
         monkeypatch.setattr(
             "app.api.main.get_runtime_user_profile",
@@ -194,6 +208,22 @@ def test_create_pipeline_run_endpoint_conflict_and_queue(monkeypatch):
         assert cancel.status_code == 200
         assert cancel.json()["status"] == "cancelled"
         assert third.status_code == 202
+    finally:
+        seed_repo.close()
+        seed_session.close()
+
+
+def test_dashboard_api_requires_login_for_protected_routes():
+    app, seed_repo, seed_session = _build_app_and_repo()
+    try:
+        client = TestClient(app)
+
+        unauthenticated = client.get("/api/dashboard/overview?hours=24")
+        session_status = client.get("/api/session")
+
+        assert unauthenticated.status_code == 401
+        assert session_status.status_code == 200
+        assert session_status.json()["authenticated"] is False
     finally:
         seed_repo.close()
         seed_session.close()

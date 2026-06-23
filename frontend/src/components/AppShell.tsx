@@ -1,6 +1,10 @@
 import { Database, Inbox, LayoutDashboard, PlayCircle } from "lucide-react";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import { type ReactNode } from "react";
+import { useNavigate } from "react-router-dom";
+
+import { api } from "../api";
 
 interface AppShellProps {
   title: string;
@@ -15,6 +19,24 @@ const navItems = [
 ];
 
 export function AppShell({ title, toolbar, children }: AppShellProps) {
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
+  const sessionQuery = useQuery({
+    queryKey: ["session"],
+    queryFn: () => api.getSession(),
+  });
+  const logoutMutation = useMutation({
+    mutationFn: () => api.logout(),
+    onSuccess: async () => {
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["session"] }),
+        queryClient.invalidateQueries({ queryKey: ["overview"] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+      ]);
+      navigate("/login", { replace: true });
+    },
+  });
+
   return (
     <div className="app-shell">
       <aside className="app-shell__sidebar">
@@ -49,7 +71,22 @@ export function AppShell({ title, toolbar, children }: AppShellProps) {
             <p className="app-toolbar__eyebrow">Local admin view</p>
             <h1>{title}</h1>
           </div>
-          <div className="app-toolbar__actions">{toolbar}</div>
+          <div className="app-toolbar__actions">
+            {toolbar}
+            {sessionQuery.data?.authenticated ? (
+              <>
+                <span className="toolbar-user-chip">{sessionQuery.data.username}</span>
+                <button
+                  className="secondary-button"
+                  type="button"
+                  disabled={logoutMutation.isPending}
+                  onClick={() => void logoutMutation.mutateAsync()}
+                >
+                  {logoutMutation.isPending ? "Signing out..." : "Sign out"}
+                </button>
+              </>
+            ) : null}
+          </div>
         </header>
         <main className="app-content">{children}</main>
       </div>

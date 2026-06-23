@@ -150,6 +150,11 @@ EMAIL_GEMINI_API_KEY=your_email_key
 EMAIL=your_email@gmail.com
 APP_PASSWORD=your_gmail_app_password
 
+# Dashboard auth
+DASHBOARD_ADMIN_USERNAME=admin
+DASHBOARD_ADMIN_PASSWORD=change-me
+DASHBOARD_SESSION_SECRET=replace-this-with-a-long-random-string
+
 # Optional proxy for transcript retrieval
 PROXY_USERNAME=
 PROXY_PASSWORD=
@@ -231,6 +236,11 @@ npm run dev
 
 The React app expects the FastAPI API at `http://127.0.0.1:8000/api` by default.
 
+### 5. Sign in to the dashboard
+
+Open the React app and sign in with `DASHBOARD_ADMIN_USERNAME` / `DASHBOARD_ADMIN_PASSWORD`
+from your root `.env`.
+
 ## Official commands
 
 ### Full pipeline
@@ -281,6 +291,7 @@ The legacy `app/profiles/user_profile.py` file is now only used to seed the firs
 ## Dashboard behavior
 
 - The dashboard is local-only in v1/v2.
+- The dashboard uses a simple single-admin session login in v2.
 - Dashboard-triggered reruns create pipeline history rows and newsletter snapshots.
 - Dashboard-triggered reruns are queued for the standalone worker and do **not** send email.
 - Queued or running dashboard reruns can be cancelled from the dashboard UI.
