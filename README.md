@@ -295,6 +295,7 @@ The legacy `app/profiles/user_profile.py` file is now only used to seed the firs
 - Dashboard-triggered reruns create pipeline history rows and newsletter snapshots.
 - Dashboard-triggered reruns are queued for the standalone worker and do **not** send email.
 - Queued or running dashboard reruns can be cancelled from the dashboard UI.
+- Failed pipeline stages can be retried from the dashboard as queued single-stage runs.
 - CLI-triggered runs keep normal email behavior.
 - Pipeline runs now persist stage-level history and worker heartbeat status for the dashboard.
 
@@ -355,6 +356,10 @@ Check:
 ### Dashboard rerun looks successful but no email arrived
 
 That is expected. Dashboard reruns intentionally store results without sending email.
+
+### Retrying a failed stage
+
+Use the `Runs` screen to retry an individual failed stage. The dashboard queues that retry as a `single_stage` pipeline run, preserves retry lineage in run history, and keeps email delivery disabled.
 
 ## Duplicate handling and rerun safety
 

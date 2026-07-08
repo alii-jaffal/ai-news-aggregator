@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useEffect, useState } from "react";
-import { Square } from "lucide-react";
+import { RotateCcw, Square } from "lucide-react";
 
 import { api } from "../api";
 import { DataTable } from "../components/DataTable";
@@ -27,6 +27,10 @@ export function RunsPage() {
     queryKey: ["pipeline-run-detail", selectedRunId],
     queryFn: () => api.getPipelineRun(selectedRunId ?? ""),
     enabled: Boolean(selectedRunId),
+    refetchInterval: (query) => {
+      const status = query.state.data?.status;
+      return status && ["queued", "running"].includes(status) ? 3000 : false;
+    },
   });
 
   const cancelRunMutation = useMutation({
@@ -35,6 +39,19 @@ export function RunsPage() {
       await Promise.all([
         queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
         queryClient.invalidateQueries({ queryKey: ["pipeline-run-detail", runId] }),
+        queryClient.invalidateQueries({ queryKey: ["overview"] }),
+      ]);
+    },
+  });
+
+  const retryStageMutation = useMutation({
+    mutationFn: ({ runId, stageRunId }: { runId: string; stageRunId: string }) =>
+      api.retryStageRun(runId, stageRunId),
+    onSuccess: async (pipelineRun) => {
+      setSelectedRunId(pipelineRun.id);
+      await Promise.all([
+        queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
+        queryClient.invalidateQueries({ queryKey: ["pipeline-run-detail"] }),
         queryClient.invalidateQueries({ queryKey: ["overview"] }),
       ]);
     },
@@ -125,6 +142,18 @@ export function RunsPage() {
               <span>Run type</span>
               <strong>{runDetailQuery.data.run_type}</strong>
             </div>
+            {runDetailQuery.data.requested_stage ? (
+              <div className="key-value">
+                <span>Requested stage</span>
+                <strong>{runDetailQuery.data.requested_stage}</strong>
+              </div>
+            ) : null}
+            {runDetailQuery.data.retry_stage_run_id ? (
+              <div className="key-value">
+                <span>Retrying stage run</span>
+                <strong>{runDetailQuery.data.retry_stage_run_id}</strong>
+              </div>
+            ) : null}
             <div className="key-value">
               <span>Email delivery</span>
               <strong>{runDetailQuery.data.send_email ? "Enabled" : "Disabled"}</strong>
@@ -168,7 +197,28 @@ export function RunsPage() {
                       </div>
                       <div className="list-row__meta">
                         <StatusBadge label={stageRun.status} tone={toneForStatus(stageRun.status)} />
+                        {stageRun.retry_of_stage_run_id ? (
+                          <span>Retry of {stageRun.retry_of_stage_run_id}</span>
+                        ) : null}
                         {stageRun.error_message ? <span>{stageRun.error_message}</span> : null}
+                        {stageRun.status === "failed" ? (
+                          <button
+                            className="secondary-button"
+                            type="button"
+                            disabled={retryStageMutation.isPending}
+                            onClick={() =>
+                              void retryStageMutation.mutateAsync({
+                                runId: runDetailQuery.data!.id,
+                                stageRunId: stageRun.id,
+                              })
+                            }
+                          >
+                            <RotateCcw size={15} />
+                            <span>
+                              {retryStageMutation.isPending ? "Queueing..." : "Retry stage"}
+                            </span>
+                          </button>
+                        ) : null}
                       </div>
                     </div>
                   ))}
@@ -177,6 +227,11 @@ export function RunsPage() {
                 <div className="empty-state">No stage history recorded for this run.</div>
               )}
             </div>
+            {retryStageMutation.error ? (
+              <div className="inline-alert inline-alert-danger">
+                {(retryStageMutation.error as Error).message}
+              </div>
+            ) : null}
             <div className="detail-block">
               <h4>Scraping summary</h4>
               <pre>{JSON.stringify(runDetailQuery.data.scraping_summary, null, 2)}</pre>

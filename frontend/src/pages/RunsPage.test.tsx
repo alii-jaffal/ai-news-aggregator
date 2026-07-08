@@ -1,4 +1,5 @@
-import { screen } from "@testing-library/react";
+import { screen, waitFor } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 import { api } from "../api";
@@ -10,6 +11,7 @@ vi.mock("../api", () => ({
     getPipelineRuns: vi.fn(),
     getPipelineRun: vi.fn(),
     cancelPipelineRun: vi.fn(),
+    retryStageRun: vi.fn(),
   },
 }));
 
@@ -24,6 +26,7 @@ describe("RunsPage", () => {
           trigger_source: "api",
           run_type: "full_pipeline",
           requested_stage: null,
+          retry_stage_run_id: null,
           requested_hours: 24,
           requested_top_n: null,
           profile_slug: "default",
@@ -50,6 +53,7 @@ describe("RunsPage", () => {
       trigger_source: "api",
       run_type: "full_pipeline",
       requested_stage: null,
+      retry_stage_run_id: null,
       requested_hours: 24,
       requested_top_n: null,
       profile_slug: "default",
@@ -73,5 +77,73 @@ describe("RunsPage", () => {
 
     expect(await screen.findByText("api")).toBeInTheDocument();
     expect(await screen.findByText("Scraping summary")).toBeInTheDocument();
+  });
+
+  it("queues a retry for a failed stage", async () => {
+    mockedApi.getPipelineRun.mockResolvedValueOnce({
+      id: "run-1",
+      trigger_source: "api",
+      run_type: "full_pipeline",
+      requested_stage: null,
+      retry_stage_run_id: null,
+      requested_hours: 24,
+      requested_top_n: null,
+      profile_slug: "default",
+      send_email: false,
+      status: "failed",
+      error_message: "digest failed",
+      scraping_summary: {},
+      processing_summary: {},
+      digest_summary: { failed: 1 },
+      email_summary: {},
+      queued_at: "2026-04-27T09:59:58Z",
+      started_at: "2026-04-27T10:00:00Z",
+      ended_at: "2026-04-27T10:00:05Z",
+      duration_seconds: 5,
+      stage_runs: [
+        {
+          id: "stage-1",
+          pipeline_run_id: "run-1",
+          stage_name: "story_digests",
+          status: "failed",
+          summary_json: { failed: 1 },
+          error_message: "digest failed",
+          retry_of_stage_run_id: null,
+          started_at: "2026-04-27T10:00:01Z",
+          ended_at: "2026-04-27T10:00:04Z",
+          duration_seconds: 3,
+        },
+      ],
+    });
+    mockedApi.retryStageRun.mockResolvedValue({
+      id: "run-2",
+      trigger_source: "api",
+      run_type: "single_stage",
+      requested_stage: "story_digests",
+      retry_stage_run_id: "stage-1",
+      requested_hours: 24,
+      requested_top_n: null,
+      profile_slug: "default",
+      send_email: false,
+      status: "queued",
+      error_message: null,
+      scraping_summary: {},
+      processing_summary: {},
+      digest_summary: {},
+      email_summary: {},
+      queued_at: "2026-04-27T10:10:00Z",
+      started_at: null,
+      ended_at: null,
+      duration_seconds: null,
+      stage_runs: [],
+    });
+
+    renderWithProviders(<RunsPage />);
+
+    await userEvent.click(await screen.findByRole("button", { name: /retry stage/i }));
+
+    await waitFor(() => {
+      expect(mockedApi.retryStageRun).toHaveBeenCalledWith("run-1", "stage-1");
+    });
   });
 });

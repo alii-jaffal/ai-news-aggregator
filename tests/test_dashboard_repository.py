@@ -148,6 +148,64 @@ def test_cancel_pipeline_run_preserves_cancelled_status(db_session):
     assert run_detail["scraping_summary"]["youtube"] == 1
 
 
+def test_pipeline_stage_retry_run_serialization(db_session):
+    repo = Repository(session=db_session)
+
+    original_run = repo.create_pipeline_run(
+        trigger_source="api",
+        requested_hours=24,
+        requested_top_n=5,
+        profile_slug="default",
+        send_email=False,
+    )
+    repo.mark_pipeline_run_running(original_run.id)
+    failed_stage = repo.start_pipeline_stage_run(original_run.id, stage_name="story_digests")
+    repo.fail_pipeline_stage_run(
+        failed_stage.id,
+        error_message="digest generation failed",
+        summary_json={"total": 2, "failed": 1},
+    )
+    repo.fail_pipeline_run(
+        original_run.id,
+        error_message="digest generation failed",
+        scraping_summary={},
+        processing_summary={},
+        digest_summary={"failed": 1},
+        email_summary={},
+    )
+
+    retry_run = repo.create_pipeline_run(
+        trigger_source="api",
+        run_type="single_stage",
+        requested_stage="story_digests",
+        retry_stage_run_id=failed_stage.id,
+        requested_hours=original_run.requested_hours,
+        requested_top_n=original_run.requested_top_n,
+        profile_slug=original_run.profile_slug,
+        send_email=False,
+    )
+    retry_stage = repo.start_pipeline_stage_run(
+        retry_run.id,
+        stage_name="story_digests",
+        retry_of_stage_run_id=failed_stage.id,
+    )
+    repo.complete_pipeline_stage_run(retry_stage.id, summary_json={"processed": 1})
+    repo.complete_pipeline_run(
+        retry_run.id,
+        scraping_summary={},
+        processing_summary={},
+        digest_summary={"processed": 1},
+        email_summary={},
+    )
+
+    retry_detail = repo.get_pipeline_run_detail(retry_run.id)
+
+    assert retry_detail["run_type"] == "single_stage"
+    assert retry_detail["requested_stage"] == "story_digests"
+    assert retry_detail["retry_stage_run_id"] == failed_stage.id
+    assert retry_detail["stage_runs"][0]["retry_of_stage_run_id"] == failed_stage.id
+
+
 def test_source_and_story_archive_queries(db_session):
     repo = Repository(session=db_session)
     now = datetime.now(timezone.utc)

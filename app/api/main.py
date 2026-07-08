@@ -231,6 +231,47 @@ def create_app() -> FastAPI:
             raise HTTPException(status_code=404, detail="Pipeline run not found")
         return PipelineRunResponse.model_validate(item)
 
+    @app.post(
+        "/api/pipeline-runs/{run_id}/stage-runs/{stage_run_id}/retry",
+        response_model=PipelineRunResponse,
+        status_code=202,
+    )
+    def retry_pipeline_stage_run(
+        run_id: str,
+        stage_run_id: str,
+        repo: Repository = Depends(get_repository),
+        _admin: dict[str, str] = Depends(require_dashboard_admin),
+    ) -> PipelineRunResponse:
+        pipeline_run = repo.get_pipeline_run(run_id)
+        if pipeline_run is None:
+            raise HTTPException(status_code=404, detail="Pipeline run not found")
+
+        stage_run = repo.get_pipeline_stage_run(stage_run_id)
+        if stage_run is None or stage_run.pipeline_run_id != run_id:
+            raise HTTPException(status_code=404, detail="Pipeline stage run not found")
+
+        if stage_run.status != "failed":
+            raise HTTPException(status_code=409, detail="Only failed stages can be retried")
+
+        if repo.has_active_pipeline_run():
+            raise HTTPException(status_code=409, detail="A pipeline run is already active")
+
+        retry_run = repo.create_pipeline_run(
+            trigger_source="api",
+            run_type="single_stage",
+            requested_stage=stage_run.stage_name,
+            retry_stage_run_id=stage_run.id,
+            requested_hours=pipeline_run.requested_hours,
+            requested_top_n=pipeline_run.requested_top_n,
+            profile_slug=pipeline_run.profile_slug,
+            send_email=False,
+            status="queued",
+        )
+        item = repo.get_pipeline_run_detail(retry_run.id)
+        if item is None:
+            raise HTTPException(status_code=404, detail="Pipeline run not found")
+        return PipelineRunResponse.model_validate(item)
+
     @app.get("/api/newsletter-runs", response_model=NewsletterRunListResponse)
     def list_newsletter_runs(
         limit: int = Query(default=20, ge=1, le=200),

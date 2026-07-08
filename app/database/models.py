@@ -187,6 +187,12 @@ class PipelineRun(Base):
         index=True,
     )
     requested_stage = Column(String(50), nullable=True)
+    retry_stage_run_id = Column(
+        String,
+        ForeignKey("pipeline_stage_runs.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     requested_hours = Column(Integer, nullable=False)
     requested_top_n = Column(Integer, nullable=True)
     profile_slug = Column(String(100), nullable=False, index=True)

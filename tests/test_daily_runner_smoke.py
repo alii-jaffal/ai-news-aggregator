@@ -16,6 +16,7 @@ class FakePipelineRepository:
         trigger_source,
         run_type="full_pipeline",
         requested_stage=None,
+        retry_stage_run_id=None,
         requested_hours,
         requested_top_n,
         profile_slug,
@@ -30,6 +31,7 @@ class FakePipelineRepository:
                 "trigger_source": trigger_source,
                 "run_type": run_type,
                 "requested_stage": requested_stage,
+                "retry_stage_run_id": retry_stage_run_id,
                 "requested_hours": requested_hours,
                 "requested_top_n": requested_top_n,
                 "profile_slug": profile_slug,
@@ -96,6 +98,7 @@ class FakePipelineRepository:
                 "status": "running",
                 "summary_json": {},
                 "error_message": None,
+                "retry_of_stage_run_id": retry_of_stage_run_id,
             }
         )
         return stage_run
@@ -420,3 +423,86 @@ def test_run_daily_pipeline_stops_after_cancelled_stage(monkeypatch):
     assert "cancelled" in result["error"].lower()
     assert [stage["stage_name"] for stage in repo.stage_runs] == ["scraping"]
     assert repo.stage_runs[0]["status"] == "cancelled"
+
+
+def test_run_daily_pipeline_single_stage_retry_only_runs_requested_stage(monkeypatch):
+    repo = FakePipelineRepository()
+    calls = {
+        "scraping": 0,
+        "anthropic_markdown": 0,
+        "youtube_transcripts": 0,
+        "story_clustering": 0,
+        "story_digests": 0,
+        "email": 0,
+    }
+
+    retry_run = repo.create_pipeline_run(
+        trigger_source="api",
+        run_type="single_stage",
+        requested_stage="story_digests",
+        retry_stage_run_id="stage-failed-1",
+        requested_hours=24,
+        requested_top_n=None,
+        profile_slug="default",
+        send_email=False,
+        status="queued",
+    )
+
+    monkeypatch.setattr(
+        daily_runner,
+        "run_scrapers",
+        lambda hours: calls.__setitem__("scraping", calls["scraping"] + 1),
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "process_anthropic_markdown",
+        lambda: calls.__setitem__("anthropic_markdown", calls["anthropic_markdown"] + 1),
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "process_youtube_transcripts",
+        lambda: calls.__setitem__("youtube_transcripts", calls["youtube_transcripts"] + 1),
+    )
+    monkeypatch.setattr(
+        daily_runner,
+        "process_story_clusters",
+        lambda hours, repo=None: calls.__setitem__(
+            "story_clustering", calls["story_clustering"] + 1
+        ),
+    )
+
+    def fake_story_digests(repo=None):
+        calls["story_digests"] += 1
+        return {
+            "total": 1,
+            "processed": 1,
+            "failed": 0,
+            "fallback_used": 0,
+            "kept_existing": 0,
+        }
+
+    monkeypatch.setattr(daily_runner, "process_story_digests", fake_story_digests)
+    monkeypatch.setattr(
+        daily_runner,
+        "run_email_stage",
+        lambda **kwargs: calls.__setitem__("email", calls["email"] + 1),
+    )
+
+    result = daily_runner.run_daily_pipeline(
+        hours=24,
+        pipeline_run_id=retry_run.id,
+        repo=repo,
+    )
+
+    assert result["success"] is True
+    assert calls == {
+        "scraping": 0,
+        "anthropic_markdown": 0,
+        "youtube_transcripts": 0,
+        "story_clustering": 0,
+        "story_digests": 1,
+        "email": 0,
+    }
+    assert [stage["stage_name"] for stage in repo.stage_runs] == ["story_digests"]
+    assert repo.stage_runs[0]["retry_of_stage_run_id"] == "stage-failed-1"
+    assert repo.completed is not None

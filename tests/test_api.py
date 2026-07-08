@@ -213,6 +213,58 @@ def test_create_pipeline_run_endpoint_conflict_and_queue(monkeypatch):
         seed_session.close()
 
 
+def test_retry_failed_pipeline_stage_endpoint(monkeypatch):
+    app, seed_repo, seed_session = _build_app_and_repo()
+    try:
+        client = TestClient(app)
+        _login(client)
+
+        monkeypatch.setattr(
+            "app.api.main.get_runtime_user_profile",
+            lambda repo=None: {"slug": "default"},
+        )
+
+        original_run = seed_repo.create_pipeline_run(
+            trigger_source="api",
+            requested_hours=24,
+            requested_top_n=5,
+            profile_slug="default",
+            send_email=False,
+        )
+        seed_repo.mark_pipeline_run_running(original_run.id)
+        failed_stage = seed_repo.start_pipeline_stage_run(
+            original_run.id,
+            stage_name="story_digests",
+        )
+        seed_repo.fail_pipeline_stage_run(
+            failed_stage.id,
+            error_message="digest stage failed",
+            summary_json={"failed": 1},
+        )
+        seed_repo.fail_pipeline_run(
+            original_run.id,
+            error_message="digest stage failed",
+            scraping_summary={},
+            processing_summary={},
+            digest_summary={"failed": 1},
+            email_summary={},
+        )
+
+        response = client.post(
+            f"/api/pipeline-runs/{original_run.id}/stage-runs/{failed_stage.id}/retry"
+        )
+
+        assert response.status_code == 202
+        assert response.json()["run_type"] == "single_stage"
+        assert response.json()["requested_stage"] == "story_digests"
+        assert response.json()["retry_stage_run_id"] == failed_stage.id
+        assert response.json()["send_email"] is False
+        assert response.json()["status"] == "queued"
+    finally:
+        seed_repo.close()
+        seed_session.close()
+
+
 def test_dashboard_api_requires_login_for_protected_routes():
     app, seed_repo, seed_session = _build_app_and_repo()
     try:

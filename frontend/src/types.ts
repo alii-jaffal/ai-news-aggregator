@@ -3,6 +3,7 @@ export interface PipelineRun {
   trigger_source: string;
   run_type: string;
   requested_stage: string | null;
+  retry_stage_run_id: string | null;
   requested_hours: number;
   requested_top_n: number | null;
   profile_slug: string;

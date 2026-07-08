@@ -120,6 +120,11 @@ export const api = {
       method: "POST",
     });
   },
+  retryStageRun(runId: string, stageRunId: string): Promise<PipelineRun> {
+    return fetchJson<PipelineRun>(`/pipeline-runs/${runId}/stage-runs/${stageRunId}/retry`, {
+      method: "POST",
+    });
+  },
   getNewsletterRuns(limit = 20, offset = 0): Promise<PaginatedResponse<NewsletterRun>> {
     return fetchJson<PaginatedResponse<NewsletterRun>>(
       `/newsletter-runs${buildQuery({ limit, offset })}`

@@ -128,6 +128,7 @@ class Repository:
         trigger_source: str,
         run_type: str = "full_pipeline",
         requested_stage: str | None = None,
+        retry_stage_run_id: str | None = None,
         requested_hours: int,
         requested_top_n: int | None,
         profile_slug: str,
@@ -139,6 +140,7 @@ class Repository:
             trigger_source=trigger_source,
             run_type=run_type,
             requested_stage=requested_stage,
+            retry_stage_run_id=retry_stage_run_id,
             requested_hours=requested_hours,
             requested_top_n=requested_top_n,
             profile_slug=profile_slug,
@@ -157,6 +159,9 @@ class Repository:
 
     def get_pipeline_run(self, run_id: str) -> Optional[PipelineRun]:
         return self.session.query(PipelineRun).filter_by(id=run_id).first()
+
+    def get_pipeline_stage_run(self, stage_run_id: str) -> Optional[PipelineStageRun]:
+        return self.session.query(PipelineStageRun).filter_by(id=stage_run_id).first()
 
     def is_pipeline_run_cancelled(self, run_id: str) -> bool:
         pipeline_run = self.get_pipeline_run(run_id)
@@ -701,6 +706,7 @@ class Repository:
             "trigger_source": run.trigger_source,
             "run_type": run.run_type,
             "requested_stage": run.requested_stage,
+            "retry_stage_run_id": run.retry_stage_run_id,
             "requested_hours": run.requested_hours,
             "requested_top_n": run.requested_top_n,
             "profile_slug": run.profile_slug,

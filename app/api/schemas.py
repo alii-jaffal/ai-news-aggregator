@@ -9,6 +9,7 @@ class PipelineRunResponse(BaseModel):
     trigger_source: str
     run_type: str
     requested_stage: str | None
+    retry_stage_run_id: str | None
     requested_hours: int
     requested_top_n: int | None
     profile_slug: str
