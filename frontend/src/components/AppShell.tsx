@@ -1,10 +1,11 @@
-import { Database, Inbox, LayoutDashboard, PlayCircle } from "lucide-react";
+import { Database, LayoutDashboard, PlayCircle } from "lucide-react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { NavLink } from "react-router-dom";
 import { type ReactNode } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { api } from "../api";
+import { BrandMark } from "./BrandMark";
 
 interface AppShellProps {
   title: string;
@@ -13,9 +14,9 @@ interface AppShellProps {
 }
 
 const navItems = [
-  { to: "/", label: "Overview", icon: LayoutDashboard },
-  { to: "/archive", label: "Archive", icon: Database },
-  { to: "/runs", label: "Runs", icon: PlayCircle },
+  { to: "/admin", label: "Overview", icon: LayoutDashboard },
+  { to: "/admin/archive", label: "Archive", icon: Database },
+  { to: "/admin/runs", label: "Runs", icon: PlayCircle },
 ];
 
 export function AppShell({ title, toolbar, children }: AppShellProps) {
@@ -33,7 +34,7 @@ export function AppShell({ title, toolbar, children }: AppShellProps) {
         queryClient.invalidateQueries({ queryKey: ["overview"] }),
         queryClient.invalidateQueries({ queryKey: ["pipeline-runs"] }),
       ]);
-      navigate("/login", { replace: true });
+      navigate("/admin/login", { replace: true });
     },
   });
 
@@ -41,12 +42,10 @@ export function AppShell({ title, toolbar, children }: AppShellProps) {
     <div className="app-shell">
       <aside className="app-shell__sidebar">
         <div className="app-brand">
-          <div className="app-brand__mark">
-            <Inbox size={18} />
-          </div>
+          <BrandMark className="app-brand__mark" />
           <div>
-            <strong>AI News Aggregator</strong>
-            <span>Demo dashboard</span>
+            <strong>Stag</strong>
+            <span>Private admin console</span>
           </div>
         </div>
         <nav className="app-nav">
@@ -68,7 +67,7 @@ export function AppShell({ title, toolbar, children }: AppShellProps) {
       <div className="app-shell__main">
         <header className="app-toolbar">
           <div>
-            <p className="app-toolbar__eyebrow">Local admin view</p>
+            <p className="app-toolbar__eyebrow">Private admin view</p>
             <h1>{title}</h1>
           </div>
           <div className="app-toolbar__actions">

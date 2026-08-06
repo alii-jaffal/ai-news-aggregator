@@ -8,6 +8,7 @@ import type {
   SourceArchiveItem,
   StoryArchiveDetail,
   StoryArchiveItem,
+  WaitlistRegistration,
   WorkerStatus,
 } from "./types";
 
@@ -62,6 +63,12 @@ function buildQuery(params: Record<string, string | number | undefined>): string
 }
 
 export const api = {
+  joinWaitlist(payload: { email: string }): Promise<WaitlistRegistration> {
+    return fetchJson<WaitlistRegistration>("/waitlist", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    });
+  },
   getSession(): Promise<DashboardSession> {
     return fetchJson<DashboardSession>("/session");
   },

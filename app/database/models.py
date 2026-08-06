@@ -174,6 +174,14 @@ class UserProfile(Base):
     )
 
 
+class WaitlistRegistration(Base):
+    __tablename__ = "waitlist_registrations"
+
+    id = Column(String, primary_key=True)
+    email = Column(String(320), nullable=False, unique=True, index=True)
+    created_at = Column(DateTime(timezone=True), nullable=False, server_default=func.now())
+
+
 class PipelineRun(Base):
     __tablename__ = "pipeline_runs"
 

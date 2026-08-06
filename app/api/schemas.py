@@ -1,7 +1,8 @@
 from datetime import datetime
+import re
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 class PipelineRunResponse(BaseModel):
@@ -239,6 +240,24 @@ class DashboardSessionResponse(BaseModel):
 class DashboardLoginRequest(BaseModel):
     username: str = Field(min_length=1)
     password: str = Field(min_length=1)
+
+
+class WaitlistRegistrationRequest(BaseModel):
+    email: str = Field(min_length=3, max_length=320)
+
+    @field_validator("email")
+    @classmethod
+    def validate_email(cls, value: str) -> str:
+        normalized = value.strip().lower()
+        if not re.fullmatch(r"[^@\s]+@[^@\s]+\.[^@\s]+", normalized):
+            raise ValueError("Enter a valid email address")
+        return normalized
+
+
+class WaitlistRegistrationResponse(BaseModel):
+    email: str
+    created_at: datetime
+    already_registered: bool
 
 
 PipelineRunResponse.model_rebuild()

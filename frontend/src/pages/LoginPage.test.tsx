@@ -28,7 +28,7 @@ describe("LoginPage", () => {
   });
 
   it("submits dashboard credentials", async () => {
-    renderWithProviders(<LoginPage />, ["/login"]);
+    renderWithProviders(<LoginPage />, ["/admin/login"]);
 
     await userEvent.type(await screen.findByLabelText(/username/i), "admin");
     await userEvent.type(screen.getByLabelText(/password/i), "secret");

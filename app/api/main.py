@@ -27,6 +27,8 @@ from app.api.schemas import (
     SourceArchiveListResponse,
     StoryArchiveDetailResponse,
     StoryArchiveListResponse,
+    WaitlistRegistrationRequest,
+    WaitlistRegistrationResponse,
     WorkerStatusResponse,
 )
 from app.database.repository import Repository
@@ -46,6 +48,18 @@ def create_app() -> FastAPI:
     @app.get("/api/health", status_code=204)
     def health() -> Response:
         return Response(status_code=204)
+
+    @app.post("/api/waitlist", response_model=WaitlistRegistrationResponse)
+    def join_waitlist(
+        payload: WaitlistRegistrationRequest,
+        repo: Repository = Depends(get_repository),
+    ) -> WaitlistRegistrationResponse:
+        registration, already_registered = repo.upsert_waitlist_registration(payload.email)
+        return WaitlistRegistrationResponse(
+            email=registration.email,
+            created_at=registration.created_at,
+            already_registered=already_registered,
+        )
 
     @app.get("/api/session", response_model=DashboardSessionResponse)
     def session_status(request: Request) -> DashboardSessionResponse:

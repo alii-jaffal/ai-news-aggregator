@@ -26,7 +26,7 @@ export function LoginPage() {
         "from" in location.state &&
         typeof location.state.from === "string"
           ? location.state.from
-          : "/";
+          : "/admin";
       navigate(target, { replace: true });
     },
   });
@@ -36,7 +36,7 @@ export function LoginPage() {
   }
 
   if (sessionQuery.data?.authenticated) {
-    return <Navigate to="/" replace />;
+    return <Navigate to="/admin" replace />;
   }
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
@@ -50,7 +50,10 @@ export function LoginPage() {
         <div className="login-card__header">
           <p className="panel__eyebrow">Admin access</p>
           <h1>Dashboard sign in</h1>
-          <p>Use the dashboard admin credentials from your root <code>.env</code>.</p>
+          <p>
+            Use the dashboard admin credentials from your root <code>.env</code>. The public
+            homepage lives separately from this internal admin console.
+          </p>
         </div>
         <form className="login-form" onSubmit={handleSubmit}>
           <label>

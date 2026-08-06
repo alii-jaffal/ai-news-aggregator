@@ -30,6 +30,7 @@ from .models import (
     StoryDigest,
     StorySourceLink,
     UserProfile,
+    WaitlistRegistration,
     WorkerHeartbeat,
     YouTubeVideo,
 )
@@ -113,6 +114,31 @@ class Repository:
         profile.is_active = True
         self.session.commit()
         return profile
+
+    def get_waitlist_registration_by_email(self, email: str) -> Optional[WaitlistRegistration]:
+        normalized_email = self._normalize_email(email)
+        return (
+            self.session.query(WaitlistRegistration)
+            .filter_by(email=normalized_email)
+            .first()
+        )
+
+    def upsert_waitlist_registration(
+        self,
+        email: str,
+    ) -> tuple[WaitlistRegistration, bool]:
+        normalized_email = self._normalize_email(email)
+        registration = self.get_waitlist_registration_by_email(normalized_email)
+        if registration is not None:
+            return registration, True
+
+        registration = WaitlistRegistration(
+            id=str(uuid4()),
+            email=normalized_email,
+        )
+        self.session.add(registration)
+        self.session.commit()
+        return registration, False
 
     def has_active_pipeline_run(self) -> bool:
         return (
@@ -921,6 +947,10 @@ class Repository:
         self.session.add(video)
         self.session.commit()
         return video
+
+    @staticmethod
+    def _normalize_email(email: str) -> str:
+        return email.strip().lower()
 
     def create_openai_article(
         self,

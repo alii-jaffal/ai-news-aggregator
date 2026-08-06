@@ -49,6 +49,12 @@ export interface DashboardSession {
   username: string | null;
 }
 
+export interface WaitlistRegistration {
+  email: string;
+  created_at: string;
+  already_registered: boolean;
+}
+
 export interface NewsletterRun {
   id: string;
   pipeline_run_id: string | null;

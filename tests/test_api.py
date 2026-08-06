@@ -184,6 +184,26 @@ def test_dashboard_api_overview_archive_and_run_endpoints():
         seed_session.close()
 
 
+def test_public_waitlist_endpoint_creates_and_reuses_registration():
+    app, seed_repo, seed_session = _build_app_and_repo()
+    try:
+        client = TestClient(app)
+
+        first = client.post("/api/waitlist", json={"email": "Reader@Example.com"})
+        second = client.post("/api/waitlist", json={"email": "reader@example.com"})
+        invalid = client.post("/api/waitlist", json={"email": "not-an-email"})
+
+        assert first.status_code == 200
+        assert first.json()["email"] == "reader@example.com"
+        assert first.json()["already_registered"] is False
+        assert second.status_code == 200
+        assert second.json()["already_registered"] is True
+        assert invalid.status_code == 422
+    finally:
+        seed_repo.close()
+        seed_session.close()
+
+
 def test_create_pipeline_run_endpoint_conflict_and_queue(monkeypatch):
     app, seed_repo, seed_session = _build_app_and_repo()
     try:

@@ -1,6 +1,12 @@
 from datetime import datetime, timedelta, timezone
 
-from app.database.models import AnthropicArticle, OpenAIArticle, UserProfile, YouTubeVideo
+from app.database.models import (
+    AnthropicArticle,
+    OpenAIArticle,
+    UserProfile,
+    WaitlistRegistration,
+    YouTubeVideo,
+)
 from app.database.repository import Repository
 
 
@@ -107,6 +113,19 @@ def test_bulk_create_anthropic_articles_skips_existing_rows(db_session):
     assert inserted_first == 1
     assert inserted_second == 0
     assert db_session.query(AnthropicArticle).count() == 1
+
+
+def test_upsert_waitlist_registration_is_idempotent_and_normalizes_email(db_session):
+    repo = Repository(session=db_session)
+
+    first, first_existing = repo.upsert_waitlist_registration(" Reader@Example.com ")
+    second, second_existing = repo.upsert_waitlist_registration("reader@example.com")
+
+    assert first.email == "reader@example.com"
+    assert first_existing is False
+    assert second.id == first.id
+    assert second_existing is True
+    assert db_session.query(WaitlistRegistration).count() == 1
 
 
 def test_mark_youtube_transcript_completed_upgrades_shared_content(db_session):
