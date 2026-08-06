@@ -4,6 +4,20 @@ AI News Aggregator is a Python pipeline that collects recent AI updates from mul
 
 The project now also includes a local FastAPI + React dashboard for demoing the system, browsing historical data, inspecting failures, and triggering safe no-email reruns.
 
+## Locked v1 product scope
+
+The current repository is still centered on an internal admin pipeline and dashboard. The locked customer-facing v1 scope lives in [PRODUCT_SCOPE.md](PRODUCT_SCOPE.md).
+
+That v1 scope is:
+
+- weekly newsletter only
+- English only
+- 7 stories per issue
+- free private beta
+- built for AI professionals
+- personalized by interests and expertise level
+- focused on combining duplicate coverage into one canonical story before ranking
+
 ## What the project does
 
 High-level flow:
