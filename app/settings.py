@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     DASHBOARD_ADMIN_PASSWORD: str = "change-me-dashboard-password"
     DASHBOARD_SESSION_SECRET: str = "change-me-dashboard-session-secret"
     DASHBOARD_ALLOWED_ORIGINS: str = "http://127.0.0.1:5173,http://localhost:5173"
+    DASHBOARD_ALLOWED_ORIGIN_REGEX: str = r"^https?://(localhost|127\.0\.0\.1)(:\d+)?$"
 
 
 settings = Settings()

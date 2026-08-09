@@ -19,6 +19,11 @@ def get_dashboard_allowed_origins() -> list[str]:
     ]
 
 
+def get_dashboard_allowed_origin_regex() -> str | None:
+    regex = settings.DASHBOARD_ALLOWED_ORIGIN_REGEX.strip()
+    return regex or None
+
+
 def build_dashboard_session_payload() -> dict[str, str]:
     return {"username": settings.DASHBOARD_ADMIN_USERNAME}
 

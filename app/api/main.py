@@ -8,6 +8,7 @@ from app.api.auth import (
     build_dashboard_session_payload,
     clear_dashboard_session,
     get_dashboard_allowed_origins,
+    get_dashboard_allowed_origin_regex,
     get_dashboard_session,
     require_dashboard_admin,
     set_dashboard_session,
@@ -40,6 +41,7 @@ def create_app() -> FastAPI:
     app.add_middleware(
         CORSMiddleware,
         allow_origins=get_dashboard_allowed_origins(),
+        allow_origin_regex=get_dashboard_allowed_origin_regex(),
         allow_credentials=True,
         allow_methods=["*"],
         allow_headers=["*"],
