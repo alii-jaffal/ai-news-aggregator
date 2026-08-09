@@ -1,227 +1,249 @@
 import { useMutation } from "@tanstack/react-query";
-import { Mail, Sparkles, Target, X } from "lucide-react";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, MouseEvent, useEffect, useRef, useState } from "react";
 
 import { api } from "../api";
-import { BrandMark } from "../components/BrandMark";
+import stagLogoUrl from "../assets/Stag-logo.png";
+import "./homepage.css";
 
 interface HomePageProps {
   initialWaitlistOpen?: boolean;
 }
 
-export function HomePage({ initialWaitlistOpen = false }: HomePageProps) {
-  const [isModalOpen, setIsModalOpen] = useState(initialWaitlistOpen);
-  const [email, setEmail] = useState("");
+const topics = ["AI models", "Agents", "Research", "Developer tools"];
+const WAITLIST_FOCUS_DELAY_MS = 260;
+const WAITLIST_BELOW_CENTER_OFFSET = 56;
 
-  useEffect(() => {
-    setIsModalOpen(initialWaitlistOpen);
-  }, [initialWaitlistOpen]);
+function ArrowIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" fill="none">
+      <path d="M3 8h10M9.5 4.5 13 8l-3.5 3.5" />
+    </svg>
+  );
+}
+
+function LogoMark() {
+  return (
+    <span className="stag-homepage__logo-mark" aria-hidden="true">
+      <img className="stag-homepage__logo-mark-image" src={stagLogoUrl} alt="" />
+    </span>
+  );
+}
+
+export function HomePage({ initialWaitlistOpen = false }: HomePageProps) {
+  const [email, setEmail] = useState("");
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const waitlistRef = useRef<HTMLDivElement>(null);
 
   const waitlistMutation = useMutation({
     mutationFn: (address: string) => api.joinWaitlist({ email: address }),
   });
 
-  const openModal = () => {
-    waitlistMutation.reset();
-    setIsModalOpen(true);
+  const focusWaitlist = () => {
+    const scrollTarget = emailInputRef.current ?? waitlistRef.current;
+
+    if (!scrollTarget) {
+      return;
+    }
+
+    const { top, height } = scrollTarget.getBoundingClientRect();
+    const targetTop =
+      top + window.scrollY - window.innerHeight / 2 + height / 2 - WAITLIST_BELOW_CENTER_OFFSET;
+
+    window.scrollTo({
+      top: Math.max(targetTop, 0),
+      behavior: "smooth",
+    });
+
+    window.setTimeout(() => {
+      emailInputRef.current?.focus({ preventScroll: true });
+    }, WAITLIST_FOCUS_DELAY_MS);
   };
 
-  const closeModal = () => {
-    setIsModalOpen(false);
-    setEmail("");
-    waitlistMutation.reset();
+  const handleWaitlistJump = (event: MouseEvent<HTMLAnchorElement>) => {
+    event.preventDefault();
+    focusWaitlist();
   };
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  useEffect(() => {
+    if (!initialWaitlistOpen) {
+      return;
+    }
+
+    focusWaitlist();
+  }, [initialWaitlistOpen]);
+
+  const submitWaitlist = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     void waitlistMutation.mutateAsync(email);
   };
 
   const successMessage = waitlistMutation.data?.already_registered
-    ? "This email is already on the waitlist."
-    : "You have been added to the waitlist.";
+    ? "You're already on the waitlist."
+    : "You're on the waitlist.";
 
   return (
-    <div className="public-shell">
-      <header className="public-header">
-        <div className="public-brand" aria-label="Stag">
-          <BrandMark className="public-brand__mark" />
-          <strong>Stag</strong>
-        </div>
-      </header>
+    <div className="stag-homepage-page">
+      <main className="stag-homepage">
+        <header className="stag-homepage__header">
+          <a className="stag-homepage__brand" href="#top" aria-label="Stag home">
+            <LogoMark />
+            <span>Stag</span>
+          </a>
+          <a className="stag-homepage__header-link" href="#waitlist" onClick={handleWaitlistJump}>
+            Join waitlist
+          </a>
+        </header>
 
-      <main className="public-main">
-        <section className="public-hero" aria-labelledby="public-hero-title">
-          <span className="public-label">Weekly AI Newsletter</span>
-          <h1 id="public-hero-title">Your personalized weekly AI briefing.</h1>
-          <p className="public-description">
-            Get a weekly AI newsletter tailored to your interests, so you can stay informed without
-            sorting through every update yourself.
+        <section className="stag-homepage__hero" id="top">
+          <p className="stag-homepage__eyebrow">Personalized AI news, once a week</p>
+          <h1>
+            Keep up with AI.
+            <br />
+            Skip the noise.
+          </h1>
+          <p className="stag-homepage__intro">
+            A short weekly briefing shaped around your interests and experience. Read what matters,
+            then get back to your work.
           </p>
-          <button className="primary-button public-cta" type="button" onClick={openModal}>
-            Join the waitlist
-          </button>
-          <p className="public-supporting-copy">
-            Free private beta &middot; Delivered weekly &middot; Unsubscribe anytime
-          </p>
-        </section>
 
-        <section className="public-section public-section-alt" aria-labelledby="public-how-title">
-          <div className="public-section__inner public-section__inner-workflow">
-            <div className="public-section__header">
-              <span className="public-section__eyebrow">How Stag works</span>
-              <h2 id="public-how-title">A simple weekly routine.</h2>
-            </div>
-
-            <div className="public-steps">
-              <article className="public-step">
-                <div className="public-step__top">
-                  <span className="public-step__number">01</span>
-                  <Target size={16} />
-                </div>
-                <h3>Set your interests</h3>
-                <p>Tell Stag which areas of AI you want to follow most closely.</p>
-              </article>
-
-              <article className="public-step">
-                <div className="public-step__top">
-                  <span className="public-step__number">02</span>
-                  <Sparkles size={16} />
-                </div>
-                <h3>Get a tailored issue</h3>
-                <p>Each week, Stag prepares a newsletter shaped around the topics you care about.</p>
-              </article>
-
-              <article className="public-step">
-                <div className="public-step__top">
-                  <span className="public-step__number">03</span>
-                  <Mail size={16} />
-                </div>
-                <h3>Read with clarity</h3>
-                <p>Your briefing arrives concise, clear, and easy to follow.</p>
-              </article>
-            </div>
-          </div>
-        </section>
-
-        <section className="public-section" aria-labelledby="public-signal-title">
-          <div className="public-section__inner public-section__inner-signal">
-            <div className="public-copy-block">
-              <h2 id="public-signal-title">Less noise. More signal.</h2>
-              <p>
-                AI news moves quickly. Stag gives you a personalized weekly briefing, so you can
-                stay current without checking every source yourself.
-              </p>
-            </div>
-
-            <div className="public-benefits" aria-label="Core benefits">
-              <span>Personalized to your interests</span>
-              <span>Delivered weekly</span>
-              <span>Clear and easy to follow</span>
-            </div>
-          </div>
-        </section>
-
-        <section className="public-section public-cta-section" aria-labelledby="public-cta-title">
-          <div className="public-section__inner public-section__inner-cta">
-            <div className="public-copy-block">
-              <h2 id="public-cta-title">Stay informed without chasing every update.</h2>
-              <p>Join the private beta and get a personalized AI newsletter delivered weekly.</p>
-            </div>
-
-            <button className="primary-button public-cta" type="button" onClick={openModal}>
-              Join the waitlist
-            </button>
-            <p className="public-supporting-copy">
-              Free during the private beta &middot; Unsubscribe anytime
-            </p>
-          </div>
-        </section>
-      </main>
-
-      <footer className="public-footer">
-        <div className="public-footer__brand">
-          <div className="public-footer__brand-row">
-            <BrandMark className="public-brand__mark public-footer__brand-mark" />
-            <strong>Stag</strong>
-          </div>
-          <p className="public-footer__tagline">Personalized weekly AI news, made simple.</p>
-        </div>
-
-        <div className="public-footer__meta">
-          <nav className="public-footer__links" aria-label="Footer">
-            <a href="#">Privacy</a>
-            <a href="#">Terms</a>
-            <a href="#">Contact</a>
-          </nav>
-          <span className="public-footer__copyright">&copy; 2026 Stag</span>
-        </div>
-      </footer>
-
-      {isModalOpen ? (
-        <div
-          className="waitlist-modal"
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="waitlist-title"
-        >
-          <div className="waitlist-modal__backdrop" onClick={closeModal} />
-          <section className="waitlist-modal__card">
-            <button
-              className="waitlist-modal__close"
-              type="button"
-              aria-label="Close waitlist form"
-              onClick={closeModal}
-            >
-              <X size={16} />
-            </button>
-
-            <span className="public-label">Private beta</span>
-            <h2 id="waitlist-title">Join the waitlist</h2>
-            <p className="waitlist-modal__description">
-              Leave your email and we&apos;ll keep you posted when Stag opens beyond internal
-              testing.
-            </p>
-
+          <div className="stag-homepage__waitlist" id="waitlist" ref={waitlistRef}>
             {waitlistMutation.data ? (
-              <div className="waitlist-modal__success">
-                <p>{successMessage}</p>
-                <button className="primary-button" type="button" onClick={closeModal}>
-                  Close
-                </button>
+              <div className="stag-homepage__success" role="status">
+                <span aria-hidden="true">&check;</span>
+                {successMessage}
               </div>
             ) : (
-              <form className="waitlist-form" onSubmit={handleSubmit}>
-                <label htmlFor="waitlist-email" className="waitlist-form__label">
+              <form className="stag-homepage__form" onSubmit={submitWaitlist}>
+                <label className="stag-homepage__sr-only" htmlFor="email">
                   Email address
                 </label>
                 <input
-                  id="waitlist-email"
+                  id="email"
+                  ref={emailInputRef}
+                  name="email"
                   type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  placeholder="you@example.com"
+                  placeholder="Email address"
                   autoComplete="email"
                   required
+                  value={email}
+                  onChange={(event) => setEmail(event.target.value)}
                 />
-                <button
-                  className="primary-button"
-                  type="submit"
-                  disabled={waitlistMutation.isPending}
-                >
-                  {waitlistMutation.isPending ? "Joining..." : "Join the waitlist"}
+                <button type="submit" disabled={waitlistMutation.isPending}>
+                  {waitlistMutation.isPending ? "Joining..." : "Join waitlist"}
+                  <ArrowIcon />
                 </button>
               </form>
             )}
 
             {waitlistMutation.error ? (
-              <div className="inline-alert inline-alert-danger">
+              <p className="stag-homepage__error" role="alert">
                 {(waitlistMutation.error as Error).message}
-              </div>
+              </p>
             ) : null}
-          </section>
-        </div>
-      ) : null}
+
+            <p className="stag-homepage__waitlist-note">Free during private beta. No daily emails.</p>
+          </div>
+        </section>
+
+        <section className="stag-homepage__how-it-works" aria-labelledby="how-it-works-title">
+          <div className="stag-homepage__section-heading">
+            <div>
+              <p className="stag-homepage__section-label">How Stag works</p>
+              <h2 id="how-it-works-title">A simple weekly routine.</h2>
+            </div>
+            <a className="stag-homepage__section-link" href="#waitlist" onClick={handleWaitlistJump}>
+              Join waitlist
+              <ArrowIcon />
+            </a>
+          </div>
+
+          <div className="stag-homepage__steps">
+            <article>
+              <span>01</span>
+              <h3>Choose your interests</h3>
+              <p>
+                Select the AI topics you care about and how technical you want your briefing to be.
+              </p>
+            </article>
+            <article>
+              <span>02</span>
+              <h3>Get a tailored issue</h3>
+              <p>Each week, Stag prepares a concise issue shaped around what is relevant to you.</p>
+            </article>
+            <article>
+              <span>03</span>
+              <h3>Read it in five minutes</h3>
+              <p>Your Sunday briefing arrives clear, focused, and easy to finish in one sitting.</p>
+            </article>
+          </div>
+        </section>
+
+        <section className="stag-homepage__product-preview" aria-label="Example weekly briefing">
+          <div className="stag-homepage__preview-topline">
+            <span>YOUR WEEK IN AI</span>
+            <span>ISSUE 024 &middot; 5 MIN</span>
+          </div>
+
+          <div className="stag-homepage__preview-heading">
+            <div>
+              <p>Curated for Ali</p>
+              <h2>Good morning.</h2>
+            </div>
+            <div className="stag-homepage__topic-list" aria-label="Selected interests">
+              {topics.map((topic) => (
+                <span key={topic}>{topic}</span>
+              ))}
+            </div>
+          </div>
+
+          <ol className="stag-homepage__story-list">
+            <li>
+              <span>01</span>
+              <div>
+                <small>THE BIG STORY</small>
+                <strong>Smaller AI models are becoming useful in production</strong>
+              </div>
+              <span aria-hidden="true">&rarr;</span>
+            </li>
+            <li>
+              <span>02</span>
+              <div>
+                <small>WORTH KNOWING</small>
+                <strong>Agent tools move from demos to repeatable workflows</strong>
+              </div>
+              <span aria-hidden="true">&rarr;</span>
+            </li>
+            <li>
+              <span>03</span>
+              <div>
+                <small>ON YOUR RADAR</small>
+                <strong>Open-source inference gets cheaper and simpler</strong>
+              </div>
+              <span aria-hidden="true">&rarr;</span>
+            </li>
+          </ol>
+        </section>
+
+        <section className="stag-homepage__closing-cta" aria-labelledby="closing-cta-title">
+          <div>
+            <p className="stag-homepage__section-label">One useful email. Once a week.</p>
+            <h2 id="closing-cta-title">Your week in AI, without the noise.</h2>
+          </div>
+          <a className="stag-homepage__closing-link" href="#waitlist" onClick={handleWaitlistJump}>
+            Join waitlist
+            <ArrowIcon />
+          </a>
+        </section>
+
+        <footer className="stag-homepage__footer">
+          <a className="stag-homepage__brand" href="#top" aria-label="Stag home">
+            <LogoMark />
+            <span>Stag</span>
+          </a>
+          <p>AI news, made personal.</p>
+          <span>&copy; 2026</span>
+        </footer>
+      </main>
     </div>
   );
 }
